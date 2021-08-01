@@ -1,5 +1,5 @@
-#ifndef fsm_t_H
-#define fsm_t_H
+#ifndef FSM_H
+#define FSM_H
 
 #include <stdint.h>
 

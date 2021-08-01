@@ -1,5 +1,5 @@
 #ifndef TASK_TABLE_H
-#define TASK_TABLE_h
+#define TASK_TABLE_H
 
 #include <stdint.h>
 
