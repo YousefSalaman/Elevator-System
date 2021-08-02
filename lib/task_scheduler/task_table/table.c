@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <list.h>
 
@@ -38,7 +39,8 @@ task_table_t init_task_table(uint16_t size)
 // Deinitialize the task table
 void deinit_task_table(task_table_t table)
 {
-	task_entry_t *entry, * temp_entry;
+	task_entry_t * entry;
+	task_entry_t * temp_entry;
 
 	for (int i = 0; i < table.size; i++)
 	{
@@ -68,21 +70,34 @@ void * lookup_task(task_table_t table, uint8_t id)
 }
 
 
-// Add a task to the task table
-void register_task(task_table_t table, uint8_t id, void* task) 
+/** Add a task to the task table
+ * 
+ * NOTE: If payload size is set to a non-positive integer, the code will
+ * disable packet size checking this task (i.e., payload size is set to
+ * NULL.)
+ */
+void register_task(task_table_t table, uint8_t id, int payload_size, void * task) 
 {
 	if (lookup_task(table, id) == NULL)
 	{
 		uint8_t hash_value = hash(table, id);
 		task_entry_t * entry = malloc(sizeof(task_entry_t));
 
+		// Set attributes for new entry
 		if (entry != NULL)
 		{
 			entry->id = id;
             entry->task = task;
 			entry->next = table.entries[hash_value];
 
-			table.entries[hash_value] = entry;
+			table.entries[hash_value] = entry;  // Make new entry head of list
+
+			// Store payload size in entry
+			entry->size = NULL;
+			if (payload_size > 0)
+			{
+				memcpy(entry->size, &(uint16_t){payload_size}, sizeof(uint16_t));
+			}
 		}
 	}
 }

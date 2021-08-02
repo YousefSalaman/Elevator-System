@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+
 /**Task entry object
  * 
  * An object that represents an entry in the task lookup
@@ -17,7 +18,7 @@ typedef struct entry
 {
 	uint8_t id;
     void * task;
-	// void * size;
+	uint16_t * size;
     struct entry * next;
 
 } task_entry_t;
@@ -44,7 +45,7 @@ typedef struct
 void deinit_task_table(task_table_t table);
 task_table_t init_task_table(uint16_t size);
 void* lookup_task(task_table_t table, uint8_t id);
-void register_task(task_table_t table, uint8_t id, void * task);
+void register_task(task_table_t table, uint8_t id, int payload_size, void * task);
 
 
 #ifdef __cplusplus
