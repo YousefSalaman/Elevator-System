@@ -16,9 +16,9 @@ extern "C" {
 */
 typedef struct entry
 {
-	uint8_t id;
+    uint8_t id;
     void * task;
-	uint16_t * size;
+    uint16_t * size;
     struct entry * next;
 
 } task_entry_t;
@@ -34,8 +34,8 @@ typedef struct entry
 */
 typedef struct 
 {
-	uint16_t size;
-	task_entry_t ** entries;
+    uint16_t size;
+    task_entry_t ** entries;
 
 } task_table_t;
 
@@ -45,7 +45,6 @@ typedef struct
 void deinit_task_table(task_table_t table);
 task_table_t init_task_table(uint16_t size);
 void* lookup_task(task_table_t table, uint8_t id);
-void register_task(task_table_t table, uint8_t id, int payload_size, void * task);
 
 
 #ifdef __cplusplus
