@@ -7,25 +7,23 @@ static task_scheduler_t scheduler;
 
 
 // Read from serial port
-void receive_serial_pkt()
+void receive_serial_pkt(void)
 {
-    uint8_t bytes_to_rx = Serial.available();
-
-    while (bytes_to_rx)
+    int byte;  
+    
+    while ((byte = Serial.read()) >= 0)
     {
-        int byte = Serial.read();
-
-        if (byte < 0)
-        {
-            break;
-        }
-
         if (process_incoming_byte(&scheduler, byte))
         {
             process_rx_scheduler_pkt(&scheduler);  // If a packet is found, then process it entirely
         }
     }
 }
+
+
+// 
+void serial_rx_cb(uint8_t task_id, void * task, uint8_t * pkt)
+{}
 
 
 // Send data to serial port

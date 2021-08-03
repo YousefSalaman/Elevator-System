@@ -56,14 +56,14 @@ void deinit_task_table(task_table_t table)
 
 
 // Returns a task with the given task number
-void * lookup_task(task_table_t table, uint8_t id)
+task_entry_t * lookup_task(task_table_t table, uint8_t id)
 {
     // Search and return task in table with the resulting hash number
     for (task_entry_t * entry = table.entries[hash(table, id)]; entry != NULL; entry = entry->next)
     {
         if (entry->id == id)
         {
-            return entry->task;
+            return entry;
         }
     }
     return NULL;  // No task was found with the given id

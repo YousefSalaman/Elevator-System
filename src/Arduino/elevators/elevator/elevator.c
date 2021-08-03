@@ -1,8 +1,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <utils.h>
-
 #include "elevator.h"
 
 
@@ -334,7 +332,7 @@ void set_temperature(elevator_t * car, uint8_t * temp)
 // Set the load in the elevator to a specific weight
 void set_weight(elevator_t * car, uint8_t * weight)
 {
-    car->state.weight = bin_to_int(weight, 2);
+    memcpy(&car->state.weight, weight, 2);
 }
 
 

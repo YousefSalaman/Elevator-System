@@ -19,7 +19,24 @@ extern "C" {
 
 // Scheduler and helper types
 
-typedef void (*rx_schedule_cb)(uint8_t *);
+/**Rx callback function
+ * 
+ * After a packet has been processed, this callback will be called with the
+ * task function, task id, and its associated payload. The callback must
+ * have a way to handle how the given task is executed with the given 
+ * information.
+*/
+typedef void (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
+
+
+typedef struct
+{
+    char * msg;   // Buffer to store the msg in
+    void * args;  // Arguments to pass to error functions
+    uint8_t type; // Type of error
+
+} err_t;
+
 
 typedef struct 
 {
@@ -42,9 +59,11 @@ typedef struct
 
 typedef struct 
 {
+    err_t err;
     uint8_t prev_task;
     task_queue_t queue;
     task_table_t table;
+    rx_schedule_cb rx_cb;
     serial_rx_pkt_t rx_pkt;
     serial_tx_pkt_t tx_pkt;
 
@@ -53,10 +72,18 @@ typedef struct
 
 // Scheduler constants
 
-// enum rx_pkt_offsets
-// {
+enum rx_pkt_offsets
+{
+    // Pre COBS decoding offsets
 
-// };
+    SCHEDULER_HDR_OFFSET = 4,
+
+    // Post COBS decoding offsets
+
+    TASK_ID_OFFSET = 1,
+    CRC_CHECKSUM_OFFSET = 2,
+    PAYLOAD_OFFSET = 4
+};
 
 
 /* Scheduler functions */

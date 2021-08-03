@@ -1,5 +1,5 @@
 
-/*This script holds a FIFO queue object that manages the incoming task from the Raspberry Pi.*/
+/* This script holds a FIFO queue object to store and manage incoming tasks. */
 
 #include <stdlib.h>
 
