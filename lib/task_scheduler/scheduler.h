@@ -29,15 +29,6 @@ extern "C" {
 typedef void (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
 
 
-typedef struct
-{
-    char * msg;   // Buffer to store the msg in
-    void * args;  // Arguments to pass to error functions
-    uint8_t type; // Type of error
-
-} err_t;
-
-
 typedef struct 
 {
     uint16_t size;
@@ -59,7 +50,6 @@ typedef struct
 
 typedef struct 
 {
-    err_t err;
     uint8_t prev_task;
     task_queue_t queue;
     task_table_t table;
@@ -89,14 +79,14 @@ enum rx_pkt_offsets
 /* Scheduler functions */
 
 // Task-related functions
+
 void schedule_task(task_scheduler_t * scheduler, uint8_t id);
 void register_task(task_table_t * table, uint8_t id, int payload_size, void * task);
-
 
 void deinit_task_scheduler(task_scheduler_t * scheduler);
 task_scheduler_t init_task_scheduler(uint8_t queue_size, uint16_t table_size, uint16_t pkt_size);
 
-void process_rx_scheduler_pkt(task_scheduler_t * scheduler);
+void process_scheduler_rx_pkt(task_scheduler_t * scheduler);
 bool process_incoming_byte(task_scheduler_t * scheduler, uint8_t byte);
 
 

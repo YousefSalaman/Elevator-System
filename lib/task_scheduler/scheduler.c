@@ -24,7 +24,7 @@ enum decode_msg_size
     DECODE_ERR_MSG_SIZE = 17,
     SHORT_PKT_MSG_SIZE = 36,
     CRC_FAIL_MSG_SIZE = 15,
-    TASK_NOT_REGISTER_MSG_SIZE = 52,
+    TASK_NOT_REGISTER_MSG_SIZE = 49,
     INCORRECT_PAYLOAD_MSG_SIZE = 52
 };
 
@@ -42,7 +42,8 @@ static uint8_t decode_err_msg_sizes[] = // Array to access decode message length
 
 /* Scheduler function prototypes */
 
-static void print_decode_err(err_t * decode_err);
+static void print_decode_err(uint8_t err_type, void * args);
+static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, serial_rx_pkt_t * rx_pkt);
 
 
 /* Public scheduler functions */
@@ -111,105 +112,104 @@ bool process_incoming_byte(task_scheduler_t * scheduler, uint8_t byte)
 }
 
 
-/** Process the stored rx scheduler packet
+/** Process the stored scheduler rx packet
  * 
  * TODO: Need to add crc stuff
  */ 
-void process_rx_scheduler_pkt(task_scheduler_t * scheduler)
+void process_scheduler_rx_pkt(task_scheduler_t * scheduler)
 {
     serial_rx_pkt_t * rx_pkt = &scheduler->rx_pkt;
+    task_entry_t * entry = check_scheduler_rx_pkt(scheduler, rx_pkt);
 
+    // If all checks passed, run rx callback
+    if (entry != NULL)
+    {
+        scheduler->rx_cb(entry->id, entry->task, rx_pkt->out_buf + PAYLOAD_OFFSET);
+    }
+
+    rx_pkt->byte_count = 0;  // Reset rx packet buffer
+}
+
+
+/* Private scheduler functions */
+
+
+// Decode and check for packet validity
+static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, serial_rx_pkt_t * rx_pkt)
+{
     // Check for minimum header length
-
     if (rx_pkt->byte_count < SCHEDULER_HDR_OFFSET)
     {
-        scheduler->err.type = SHORT_PKT_HDR_SIZE;
-        goto handle_invalid_pkt;
+        print_decode_err(SHORT_PKT_HDR_SIZE, NULL);
+        return NULL;
     }
 
     size_t pkt_size = cobs_decode(rx_pkt->in_buf, rx_pkt->size, rx_pkt->out_buf);  // Decode packet and pass to new buffer
 
     // TODO: Put crc stuff in here
 
-    // Check if task exists and if the length matches
-
     uint8_t task_id = rx_pkt->out_buf[TASK_ID_OFFSET];
     task_entry_t * entry = lookup_task(scheduler->table, task_id);
 
-    if (entry == NULL)  // Entry was not registered
+    // Check if entry was registered
+    if (entry == NULL)
     {
-        scheduler->err.args = &task_id;
-        scheduler->err.type = TASK_NOT_REGISTERED;
-        goto handle_invalid_pkt;
+        print_decode_err(TASK_NOT_REGISTERED, &task_id);
+        return NULL;
     }
 
-    if (entry->size != NULL)  // If stored size is NULL, then size won't be checked
+    // Check if stored size matches size of packet
+    if (entry->size != NULL)  // If stored size is NULL, then packet length won't be checked
     {
-        if (pkt_size != *entry->size + PAYLOAD_OFFSET - 1)  // Check if stored size matches size of packet
+        if (pkt_size != *entry->size + PAYLOAD_OFFSET - 1)
         {
-            scheduler->err.args = (uint16_t []){*entry->size + PAYLOAD_OFFSET - 1, pkt_size};
-            scheduler->err.type = INCORRECT_PAYLOAD_SIZE;
-            goto handle_invalid_pkt;
+            print_decode_err(INCORRECT_PAYLOAD_SIZE, (uint16_t []){*entry->size + PAYLOAD_OFFSET - 1, pkt_size});
+            return NULL;
         }
     }
 
-    // If all checks passed, run rx callback and reset rx packet buffer
-
-    scheduler->rx_cb(task_id, entry->task, rx_pkt->out_buf + PAYLOAD_OFFSET);
-    rx_pkt->byte_count = 0;
-
-
-    // If packet is invalid, then skip other checks, reset buffer,
-    // and send packet decoding error
-    handle_invalid_pkt:
-
-        rx_pkt->byte_count = 0;  
-        print_decode_err(&scheduler->err);
+    return entry;  // If checks passed, return entry
 }
 
 
-/* Private scheduler functions */
-
 // Send decode errors for computer to print out in its terminal
-static void print_decode_err(err_t * decode_err)
-{  
-    uint8_t msg_length = DECODE_ERR_MSG_SIZE + decode_err_msg_sizes[decode_err->type];
+static void print_decode_err(uint8_t err_type, void * args)
+{
+    uint8_t * err_msg;
+    uint8_t msg_length = DECODE_ERR_MSG_SIZE + decode_err_msg_sizes[err_type];
 
-    decode_err->msg = malloc(sizeof(char) * msg_length);  // Allocate enough space for error message
+    err_msg = malloc(sizeof(char) * msg_length);  // Allocate enough space for error message
 
     // Create error message
-    strcpy(decode_err->msg, "Decode error - ");
-    switch (decode_err->type)
+    strcpy(err_msg, "Decode error - ");
+    switch (err_type)
     {
         case SHORT_PKT_HDR_SIZE:
-            strcat(decode_err->msg, "packet header was not fully formed\n");
+            strcat(err_msg, "packet header was not fully formed\n");
             break;
         
         case CRC_CHECKSUM_FAIL:
-            strcat(decode_err->msg, "checksum failed\n");
+            strcat(err_msg, "checksum failed\n");
             break;
         
         case TASK_NOT_REGISTERED:
-            strcat(decode_err->msg, "no tasks have been registered with an ID of ");
-            strcat(decode_err->msg, itoa(*(uint8_t *) decode_err->args, decode_err->msg, 10));
-            strcat(decode_err->msg, "\n");
+            strcat(err_msg, "no task has been registered with an ID of ");
+            strcat(err_msg, itoa(*(uint8_t *) args, err_msg, 10));
+            strcat(err_msg, "\n");
             break;
         
         case INCORRECT_PAYLOAD_SIZE:
-            strcat(decode_err->msg, "expected ");
-            strcat(decode_err->msg, itoa(((char *)decode_err->args)[0], decode_err->msg, 10));
-            strcat(decode_err->msg, " bytes, but received ");
-            strcat(decode_err->msg, itoa(((char *)decode_err->args)[1], decode_err->msg, 10));
-            strcat(decode_err->msg, " bytes\n");
+            strcat(err_msg, "expected ");
+            strcat(err_msg, itoa(((uint16_t *) args)[0], err_msg, 10));
+            strcat(err_msg, " bytes, but received ");
+            strcat(err_msg, itoa(((uint16_t *) args)[1], err_msg, 10));
+            strcat(err_msg, " bytes\n");
             break;
     }
 
     // TODO: Add the logger function in here
 
-    // Reset error object
-
-    free(decode_err->msg);
-    decode_err->args = NULL;
+    free(err_msg);
 }
 
 
