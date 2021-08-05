@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #include "fsm.h"
 
@@ -22,45 +21,37 @@ void add_state(fsm_t * fsm, state_t * state, uint8_t id)
 }
 
 
-// Create a state machine
-fsm_t create_fsm(uint8_t state_cnt)
+/**Create a state machine
+ * 
+ * If no states are provided (i.e., if the argument is NULL), then
+ * the code will manually allocate memory, so you can later add
+ * the states.
+ */ 
+fsm_t create_fsm(uint8_t state_cnt, state_t ** states)
 {
     fsm_t fsm;
 
     fsm.state_cnt = state_cnt;
     fsm.curr_state = INVALID_STATE;
-    fsm.states = malloc(sizeof(state_t *) * state_cnt);
 
-    if (fsm.states != NULL)
+    if (states == NULL)
     {
-        for (uint8_t i = 0; i < state_cnt; i++)
+        fsm.states = malloc(sizeof(state_t *) * state_cnt);
+
+        if (fsm.states != NULL)
         {
-            fsm.states[i] = NULL;
-        }
+            for (uint8_t i = 0; i < state_cnt; i++)
+            {
+                fsm.states[i] = NULL;
+            }
+        }     
+    }
+    else
+    {
+        fsm.states = states;
     }
 
     return fsm;
-}
-
-
-// Uninitialiazed a state machine
-void deinit_fsm(fsm_t * fsm)
-{
-    if (fsm->states != NULL)
-    {
-        state_t * temp_state;
-        state_t * state = *fsm->states;
-
-        for (uint8_t i = 0; i < fsm->state_cnt; state = temp_state)
-        {
-            temp_state = fsm->states[++i];  // Set temp_state as next element in array
-            if (state != NULL)
-            {
-                free(state);
-            }
-        }
-
-    }
 }
 
 

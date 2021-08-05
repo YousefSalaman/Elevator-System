@@ -23,8 +23,7 @@ extern "C" {
  * 
  * After a packet has been processed, this callback will be called with the
  * task function, task id, and its associated payload. The callback must
- * have a way to handle how the given task is executed with the given 
- * information.
+ * define a way to run the task with the given information.
 */
 typedef void (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
 
@@ -36,7 +35,7 @@ typedef struct
     uint8_t * out_buf;
     uint16_t byte_count;
 
-} serial_rx_pkt_t;
+} serial_pkt_t;
 
 
 typedef struct
@@ -51,11 +50,11 @@ typedef struct
 typedef struct 
 {
     uint8_t prev_task;
-    task_queue_t queue;
+    // task_queue_t queue;
     task_table_t table;
     rx_schedule_cb rx_cb;
-    serial_rx_pkt_t rx_pkt;
-    serial_tx_pkt_t tx_pkt;
+    serial_pkt_t rx_pkt;
+    serial_pkt_t tx_pkt;
 
 } task_scheduler_t;
 
@@ -80,7 +79,10 @@ enum rx_pkt_offsets
 
 // Task-related functions
 
-void schedule_task(task_scheduler_t * scheduler, uint8_t id);
+void deinit_serial_pkt(serial_pkt_t * pkt);
+serial_pkt_t init_serial_pkt(uint8_t pkt_size);
+
+// void schedule_task(task_scheduler_t * scheduler, uint8_t id);
 void register_task(task_table_t * table, uint8_t id, int payload_size, void * task);
 
 void deinit_task_scheduler(task_scheduler_t * scheduler);

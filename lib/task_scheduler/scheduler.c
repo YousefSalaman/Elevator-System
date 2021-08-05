@@ -3,8 +3,6 @@
 
 #include "scheduler.h"
 #include "cobs/cobs.h"
-#include "task_queue/queue.h"
-#include "task_table/table.h"
 
 
 /* Scheduler constants */
@@ -43,21 +41,37 @@ static uint8_t decode_err_msg_sizes[] = // Array to access decode message length
 /* Scheduler function prototypes */
 
 static void print_decode_err(uint8_t err_type, void * args);
-static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, serial_rx_pkt_t * rx_pkt);
+static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, serial_pkt_t * rx_pkt);
 
 
 /* Public scheduler functions */
 
-// Initialize an rx packet
-static serial_rx_pkt_t init_rx_serial_pkt(uint16_t pkt_size)
+// Initialize a packet
+serial_pkt_t init_serial_pkt(uint8_t pkt_size)
 {
-    serial_rx_pkt_t pkt;
+    serial_pkt_t pkt;
 
     pkt.byte_count = 0;
     pkt.size = pkt_size;
     pkt.in_buf = malloc(sizeof(uint8_t) * pkt_size);
+    pkt.out_buf = malloc(sizeof(uint8_t) * pkt_size);
 
     return pkt;
+}
+
+
+// Unitialize a packet
+void deinit_serial_pkt(serial_pkt_t * pkt)
+{
+    if (pkt->in_buf != NULL)
+    {
+        free(pkt->in_buf);
+    }
+
+    if (pkt->out_buf != NULL)
+    {
+        free(pkt->out_buf);
+    }
 }
 
 
@@ -66,9 +80,9 @@ task_scheduler_t init_task_scheduler(uint8_t queue_size, uint16_t table_size, ui
 {
     task_scheduler_t scheduler;
 
-    scheduler.queue = init_task_queue(queue_size);
+    // scheduler.queue = init_task_queue(queue_size);
     scheduler.table = init_task_table(table_size);
-    scheduler.rx_pkt = init_rx_serial_pkt(pkt_size);
+    scheduler.rx_pkt = init_serial_pkt(pkt_size);
     // scheduler.tx_pkt = init_tx_serial_pkt(pkt_size);
 
     return scheduler;
@@ -78,25 +92,25 @@ task_scheduler_t init_task_scheduler(uint8_t queue_size, uint16_t table_size, ui
 // Unitialize task scheduler
 void deinit_task_scheduler(task_scheduler_t * scheduler)
 {
-    deinit_task_queue(&scheduler->queue);
+    // deinit_task_queue(&scheduler->queue);
     deinit_task_table(scheduler->table);
 }
 
 
 // Scheduler a task 
-void schedule_task(task_scheduler_t * scheduler, uint8_t id)
-{
-    if (!in_queue(&scheduler->queue, id))
-    {
-        push_task(&scheduler->queue, id);
-    }
-}
+// void schedule_task(task_scheduler_t * scheduler, uint8_t id)
+// {
+//     if (!in_queue(&scheduler->queue, id))
+//     {
+//         push_task(&scheduler->queue, id);
+//     }
+// }
 
 
 // Process incoming information byte-by-byte
 bool process_incoming_byte(task_scheduler_t * scheduler, uint8_t byte)
 {
-    serial_rx_pkt_t * rx_pkt = &scheduler->rx_pkt;
+    serial_pkt_t * rx_pkt = &scheduler->rx_pkt;
 
     if (rx_pkt->byte_count < rx_pkt->size)  // Add element to the rx packet buffer
     {
@@ -114,28 +128,39 @@ bool process_incoming_byte(task_scheduler_t * scheduler, uint8_t byte)
 
 /** Process the stored scheduler rx packet
  * 
- * TODO: Need to add crc stuff
+ * In here, the packet that was built with process_incoming_byte
+ * will be processed in its entirety. 
+ * 
+ * TODO: Change name to perform_task.
  */ 
 void process_scheduler_rx_pkt(task_scheduler_t * scheduler)
 {
-    serial_rx_pkt_t * rx_pkt = &scheduler->rx_pkt;
+    serial_pkt_t * rx_pkt = &scheduler->rx_pkt;
     task_entry_t * entry = check_scheduler_rx_pkt(scheduler, rx_pkt);
 
     // If all checks passed, run rx callback
     if (entry != NULL)
     {
         scheduler->rx_cb(entry->id, entry->task, rx_pkt->out_buf + PAYLOAD_OFFSET);
+        // alert_task_completion(entry->id);
     }
 
     rx_pkt->byte_count = 0;  // Reset rx packet buffer
 }
 
 
+void schedule_task(task_scheduler_t * scheduler, uint8_t * pkt, uint8_t task_id)
+{
+    serial_pkt_t * tx_pkt = &scheduler->tx_pkt;
+
+    
+}
+
 /* Private scheduler functions */
 
 
 // Decode and check for packet validity
-static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, serial_rx_pkt_t * rx_pkt)
+static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, serial_pkt_t * rx_pkt)
 {
     // Check for minimum header length
     if (rx_pkt->byte_count < SCHEDULER_HDR_OFFSET)

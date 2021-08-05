@@ -2,6 +2,11 @@
 #define FSM_H
 
 #include <stdint.h>
+#include <stdlib.h>
+
+#ifndef _cplusplus
+#include <stdbool.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,10 +40,11 @@ typedef struct
 
 // FSM function prototypes
 
-void deinit_fsm(fsm_t * fsm);
-fsm_t create_fsm(uint8_t state_cnt);
 void run_fsm(fsm_t * fsm, void * args);
+fsm_t create_fsm(uint8_t state_cnt, state_t ** states);
 void add_state(fsm_t * fsm, state_t * state, uint8_t id);
+
+#define deinit_fsm(fsm) free((fsm)->states)
 
 #ifdef __cplusplus
 }

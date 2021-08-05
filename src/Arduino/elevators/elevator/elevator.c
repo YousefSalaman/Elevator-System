@@ -63,20 +63,12 @@ elevator_t init_elevator(uint8_t * limits)
     elevator_t car = {
         .attrs = car_attrs,
         .state = car_state,
-        .behavior = create_fsm(ELEVATOR_STATE_CNT),
+        .behavior = create_fsm(ELEVATOR_STATE_CNT, elevator_states),
         .limits = car_limits
     };
 
-    // Set up behavior for the elevator
-    if (car.behavior.states != NULL)
-    {
-        add_state(&car.behavior, &idle, IDLE);
-        add_state(&car.behavior, &moving, MOVING);
-        add_state(&car.behavior, &emergency, EMERGENCY);
-        add_state(&car.behavior, &maintenance, MAINTENANCE);
+    car.behavior.curr_state = IDLE;  // Start with the idle state (Change to init later)
 
-        car.behavior.curr_state = IDLE;  // Start with the idle state (Change to init later)
-    }
 
     return car;
 }
@@ -85,7 +77,6 @@ elevator_t init_elevator(uint8_t * limits)
 // Destructor for an elevator object
 void deinit_elevator(elevator_t * car)
 {
-    deinit_fsm(&car->behavior);
     erase_list_array(car->attrs.riders, car->limits.floor);
 
     // Free up array indicating floors that were requested

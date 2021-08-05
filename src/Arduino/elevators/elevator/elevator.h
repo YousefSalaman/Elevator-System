@@ -156,10 +156,7 @@ typedef struct
 
 /* Elevator variables */
 
-extern state_t idle;
-extern state_t moving;
-extern state_t emergency;
-extern state_t maintenance;
+extern state_t ** elevator_states;
 
 /* Elevator methods */
 
