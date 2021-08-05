@@ -8,6 +8,12 @@
 #include "../scheduler.h"
 
 
+/* Scheduling queue prototypes */
+
+static void link_queues(schedule_queues_t ** queues, uint8_t queue_size);
+static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, uint8_t pkt_size);
+static list_node_t * prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size);
+
 /** Public scheduling queue methods **/
 
 // Initializes scheduling queues
@@ -66,27 +72,28 @@ void deinit_task_queue(schedule_queues_t ** queues)
 
 bool push_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t * pkt, uint8_t pkt_size, bool is_priority)
 {
-    queue_entry_t * new_task = prepare_unscheduled_task(queues, task_id, pkt, pkt_size);
+    list_node_t * unscheduled_task = prepare_unscheduled_task(queues, task_id, pkt, pkt_size);
 
-    if (new_task != NULL)
+    if (unscheduled_task != NULL)
     {
+        list_node_t * last_scheduled_task;  // Most recent scheduled task in corresponding fifo
+
         if (is_priority)
         {
-            // The head of the unscheduled queue has as its item a pointer to the tail
-            // of the priority fifo. This was set up during the "link_queues" function,
-            // so this operation is now O(1)
-            move_to_back(&(*queues)->unscheduled->item, &new_task);
+            last_scheduled_task = (*queues)->unscheduled->item;
         }
         else
         {
-            // The head of the priority queue has as its item a pointer to the tail of
-            // the normal fifo. This was set up during the "link_queues" function, so
-            // this operation is now O(1)
-            move_to_back(&(*queues)->priority->item, &new_task);
+            last_scheduled_task = (*queues)->priority->item;
         }
         
+        // The head of the unscheduled queue has as its item a pointer to the tail
+        // of the priority fifo and the head of the priority queue points to the
+        // tail of the normal fifo. This was set up during the "link_queues" 
+        // function, so this operation is now O(1)
+        move_to_back(&last_scheduled_task, &unscheduled_task);
     }
-    return new_task != NULL;
+    return unscheduled_task != NULL;
 }
 
 
@@ -210,7 +217,7 @@ static void link_queues(schedule_queues_t ** queues, uint8_t queue_size)
 
 
 // Check and prepare unscheduled task for scheduling
-static queue_entry_t * prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size)
+static list_node_t * prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size)
 {
     if (!queues_are_full(*queues))
     {
@@ -223,10 +230,12 @@ static queue_entry_t * prepare_unscheduled_task(schedule_queues_t ** queues, uin
         }
 
         // Set up new task entry
-        new_task->id = task_id;
+        *new_task->id = task_id;
         new_task->pkt.byte_count = pkt_size;
         memcpy(new_task->pkt.in_buf, pkt, pkt_size);
 
-        return new_task;
+        return (*queues)->unscheduled->next;
     }
+
+    return NULL;
 }

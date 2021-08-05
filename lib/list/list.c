@@ -12,7 +12,7 @@ static list_node_t * create_item(void * item, size_t item_size);
 /* Public linked list functions */
 
 // Appends an item to the tail of the list
-void append(list_node_t ** tail, void * item, size_t item_size)
+bool append(list_node_t ** tail, void * item, size_t item_size)
 {
     list_node_t * new_node = create_item(item, item_size);
 
@@ -20,11 +20,13 @@ void append(list_node_t ** tail, void * item, size_t item_size)
     {
         move_to_back(tail, &new_node);
     }
+
+    return new_node != NULL;
 }
 
 
 // Appends an item to the left of the list
-void append_left(list_node_t ** head, void * item, size_t item_size)
+bool append_left(list_node_t ** head, void * item, size_t item_size)
 {
     list_node_t * new_node = create_item(item, item_size);
 
@@ -33,6 +35,8 @@ void append_left(list_node_t ** head, void * item, size_t item_size)
         new_node->next = *head;
         *head = new_node;
     }
+
+    return new_node != NULL;
 }
 
 

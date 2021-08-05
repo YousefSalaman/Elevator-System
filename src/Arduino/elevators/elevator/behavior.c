@@ -34,7 +34,7 @@ static state_t moving = {.run = moving_run, .change = moving_change};
 static state_t emergency = {.run = emergency_run, .change = emergency_change};
 static state_t maintenance = {.run = emergency_run, .change = maintenance_change};
 
-state_t ** elevator_states = {&idle, &moving, &emergency, &maintenance};
+state_t * elevator_states[] = {&idle, &moving, &emergency, &maintenance};
 
 
 /* Emergency state functions */

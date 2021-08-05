@@ -8,7 +8,8 @@
 #endif
 
 #include <list.h>
-#include <scheduler.h>
+
+#include "../serial_pkt/serial_pkt.h"
 
 #ifdef __cplusplus
 extern "C" {

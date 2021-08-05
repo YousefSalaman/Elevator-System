@@ -124,7 +124,7 @@ void enter_elevator(elevator_t * car, uint8_t * attrs)
         // request for that floor
         if (floor && floor <= car->limits.floor)
         {
-            person_was_added = add_item(&car->attrs.riders[floor - 1], &(person_t){temp, weight}, sizeof(person_t));
+            person_was_added = append_left(&car->attrs.riders[floor - 1], &(person_t){temp, weight}, sizeof(person_t));
         }
 
         // Update elevator's state if person was added

@@ -30,25 +30,6 @@ typedef void (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
 
 typedef struct 
 {
-    uint16_t size;
-    uint8_t * in_buf;
-    uint8_t * out_buf;
-    uint16_t byte_count;
-
-} serial_pkt_t;
-
-
-typedef struct
-{
-    uint16_t size;
-    uint8_t * buf;
-    uint16_t byte_count;
-
-} serial_tx_pkt_t;
-
-
-typedef struct 
-{
     uint8_t prev_task;
     // task_queue_t queue;
     task_table_t table;
@@ -78,9 +59,6 @@ enum rx_pkt_offsets
 /* Scheduler functions */
 
 // Task-related functions
-
-void deinit_serial_pkt(serial_pkt_t * pkt);
-serial_pkt_t init_serial_pkt(uint8_t pkt_size);
 
 // void schedule_task(task_scheduler_t * scheduler, uint8_t id);
 void register_task(task_table_t * table, uint8_t id, int payload_size, void * task);

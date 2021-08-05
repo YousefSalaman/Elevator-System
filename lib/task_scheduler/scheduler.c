@@ -46,35 +46,6 @@ static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, seria
 
 /* Public scheduler functions */
 
-// Initialize a packet
-serial_pkt_t init_serial_pkt(uint8_t pkt_size)
-{
-    serial_pkt_t pkt;
-
-    pkt.byte_count = 0;
-    pkt.size = pkt_size;
-    pkt.in_buf = malloc(sizeof(uint8_t) * pkt_size);
-    pkt.out_buf = malloc(sizeof(uint8_t) * pkt_size);
-
-    return pkt;
-}
-
-
-// Unitialize a packet
-void deinit_serial_pkt(serial_pkt_t * pkt)
-{
-    if (pkt->in_buf != NULL)
-    {
-        free(pkt->in_buf);
-    }
-
-    if (pkt->out_buf != NULL)
-    {
-        free(pkt->out_buf);
-    }
-}
-
-
 // Initialize task scheduler
 task_scheduler_t init_task_scheduler(uint8_t queue_size, uint16_t table_size, uint16_t pkt_size)
 {
@@ -151,7 +122,7 @@ void process_scheduler_rx_pkt(task_scheduler_t * scheduler)
 
 void schedule_task(task_scheduler_t * scheduler, uint8_t * pkt, uint8_t task_id)
 {
-    serial_pkt_t * tx_pkt = &scheduler->tx_pkt;
+    // serial_pkt_t * tx_pkt = &scheduler->tx_pkt;
 
     
 }
@@ -200,7 +171,7 @@ static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, seria
 // Send decode errors for computer to print out in its terminal
 static void print_decode_err(uint8_t err_type, void * args)
 {
-    uint8_t * err_msg;
+    char * err_msg;
     uint8_t msg_length = DECODE_ERR_MSG_SIZE + decode_err_msg_sizes[err_type];
 
     err_msg = malloc(sizeof(char) * msg_length);  // Allocate enough space for error message

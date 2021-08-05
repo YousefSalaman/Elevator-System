@@ -29,10 +29,10 @@ uint16_t get_list_length(list_node_t * head);
 list_node_t ** create_list_array(uint16_t size);
 void erase_list_array(list_node_t ** array_head, uint16_t size);
 
-void append(list_node_t ** tail, void * item, size_t item_size);
+bool append(list_node_t ** tail, void * item, size_t item_size);
 void move_to_back(list_node_t ** tail, list_node_t ** new_tail);
 void move_to_front(list_node_t ** head, list_node_t ** new_head);
-void append_left(list_node_t ** head, void * item, size_t item_size);
+bool append_left(list_node_t ** head, void * item, size_t item_size);
 
 
 // Get item from list's head (this expects a list_node_t ** as an argument)

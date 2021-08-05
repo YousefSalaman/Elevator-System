@@ -156,7 +156,7 @@ typedef struct
 
 /* Elevator variables */
 
-extern state_t ** elevator_states;
+extern state_t * elevator_states[];
 
 /* Elevator methods */
 
