@@ -32,8 +32,7 @@ bool append_left(list_node_t ** head, void * item, size_t item_size)
 
     if (new_node != NULL)
     {
-        new_node->next = *head;
-        *head = new_node;
+        move_to_front(head, &new_node);
     }
 
     return new_node != NULL;
@@ -143,20 +142,21 @@ static list_node_t * create_item(void * item, size_t item_size)
 {
     list_node_t * new_node = malloc(sizeof(list_node_t));
 
-    if (new_node != NULL)
+    if (new_node == NULL)
     {
-        void * new_item = malloc(item_size);
-
-        if (new_item == NULL)  // Free up the recently created node if no more space if available
-        {
-            free(new_node);
-            new_node = NULL;
-        }
-        else  // Pass the item to the list node
-        {
-            memcpy(new_item, item, item_size);
-            new_node->item = new_item;
-        }
+        return NULL;
     }
+
+    void * new_item = malloc(item_size);
+
+    if (new_item == NULL)  // Free up the recently created node if no more space if available
+    {
+        free(new_node);
+        return NULL;
+    }
+
+    memcpy(new_item, item, item_size);
+    new_node->item = new_item;
+
     return new_node;
 }

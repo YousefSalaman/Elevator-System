@@ -30,12 +30,17 @@ typedef void (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
 
 typedef struct 
 {
+    // 
     uint8_t prev_task;
-    // task_queue_t queue;
     task_table_t table;
-    rx_schedule_cb rx_cb;
+
+    // Scheduler rx attributes
     serial_pkt_t rx_pkt;
-    serial_pkt_t tx_pkt;
+    rx_schedule_cb rx_cb;
+
+    // Scheduler tx attributes
+    // tx_schedule_cb tx_cb;
+    schedule_queues_t queues;
 
 } task_scheduler_t;
 

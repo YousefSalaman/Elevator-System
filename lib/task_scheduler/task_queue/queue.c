@@ -12,7 +12,8 @@
 
 static void link_queues(schedule_queues_t ** queues, uint8_t queue_size);
 static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, uint8_t pkt_size);
-static list_node_t * prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size);
+static list_node_t ** prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size);
+
 
 /** Public scheduling queue methods **/
 
@@ -28,10 +29,10 @@ schedule_queues_t * init_scheduling_queues(uint8_t queue_size, uint8_t pkt_size)
     }
 
     queues->size = queue_size;
-    queues->schedule_pool = malloc(sizeof(list_node_t *) * queue_size);
+    queues->unscheduled->item = malloc(sizeof(list_node_t *) * queue_size);  // Memory pool for scheduling tasks
 
     // Check if the schedule pool and the entries inside it where initialized
-    if (queues->schedule_pool == NULL || !init_queue_entries(queues, queue_size, pkt_size))
+    if (queues->unscheduled->item == NULL || !init_queue_entries(queues, queue_size, pkt_size))
     {
         goto handle_uninitialized_queues;
     }
@@ -44,9 +45,9 @@ handle_uninitialized_queues:
 
     if (queues != NULL)
     {
-        if (queues->schedule_pool != NULL)
+        if (queues->unscheduled->item != NULL)
         {
-            free(queues->schedule_pool);
+            free(queues->unscheduled->item);
         }
         free(queues);
     }
@@ -54,66 +55,56 @@ handle_uninitialized_queues:
 }
 
 
-// Deinitialize task queue
+// Uninitialize task queue
 void deinit_task_queue(schedule_queues_t ** queues)
 {
+    list_node_t ** scheduling_pool = (*queues)->unscheduled->item;
+
     for (uint8_t i = 0; i < (*queues)->size; i++)
     {
-        queue_entry_t * entry = (*queues)->schedule_pool[i]->item;
+        queue_entry_t * entry = scheduling_pool[i]->item;
 
         deinit_serial_pkt(&entry->pkt);
         free(entry);
     }
 
-    free((*queues)->schedule_pool);
+    free(scheduling_pool);
     free(*queues);
 }
 
 
 bool push_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t * pkt, uint8_t pkt_size, bool is_priority)
 {
-    list_node_t * unscheduled_task = prepare_unscheduled_task(queues, task_id, pkt, pkt_size);
+    list_node_t ** unscheduled_task = prepare_unscheduled_task(queues, task_id, pkt, pkt_size);
 
-    if (unscheduled_task != NULL)
+    if (unscheduled_task != NULL)  // If there are any unscheduled tasks
     {
-        list_node_t * last_scheduled_task;  // Most recent scheduled task in corresponding fifo
+        list_node_t ** last_scheduled_task;  // Most recent scheduled task in corresponding fifo
 
-        if (is_priority)
-        {
-            last_scheduled_task = (*queues)->unscheduled->item;
-        }
-        else
-        {
-            last_scheduled_task = (*queues)->priority->item;
-        }
-        
-        // The head of the unscheduled queue has as its item a pointer to the tail
-        // of the priority fifo and the head of the priority queue points to the
-        // tail of the normal fifo. This was set up during the "link_queues" 
-        // function, so this operation is now O(1)
-        move_to_back(&last_scheduled_task, &unscheduled_task);
+        last_scheduled_task = (is_priority)? &(*queues)->priority->item: &(*queues)->normal->item;
+        move_to_back(last_scheduled_task, unscheduled_task);
     }
+
     return unscheduled_task != NULL;
 }
 
 
 void pop_task(schedule_queues_t ** queues, bool is_priority)
 {
-    list_node_t * scheduled_task;
-
-    if (is_priority)
+    if (!are_queues_empty(*queues))
     {
-        scheduled_task = (*queues)->priority->next;
-    }
-    else
-    {
-        scheduled_task = (*queues)->normal->next;
-    }
+        list_node_t ** first_scheduled_task;  // Oldest scheduled task in corresponding fifo
 
-    // The heads of the queues have a poiter to the real head of the fifos, so
-    // moving this task to the front of the unscheduled stack, unschedules them
-    // and makes the operation O(1)
-    move_to_front(&(*queues)->unscheduled->next, &scheduled_task);
+        first_scheduled_task = (is_priority)? &(*queues)->priority->next: &(*queues)->normal->next;
+
+        // Reset old task
+        queue_entry_t * completed_task = (*first_scheduled_task)->item;
+
+        completed_task->id = NULL;
+        completed_task->pkt.byte_count = 0;
+
+        move_to_front(&(*queues)->unscheduled->next, first_scheduled_task);
+    }
 }
 
 
@@ -121,28 +112,22 @@ void pop_task(schedule_queues_t ** queues, bool is_priority)
 bool in_queue(schedule_queues_t * queues, uint8_t id)
 {
     queue_entry_t * entry;
+    list_node_t * queue_array[] = {queues->normal, queues->priority};
 
-    // Search in normal fifo for task
-    for (list_iterator(queues->normal, queue_node))
+    // Search the normal and priority pending task fifos for a matching task id
+    for (uint8_t i = 0; i < 2; i++)
     {
-        entry = queue_node->item;
-        if (*entry->id  == id)
+        for (list_iterator(queue_array[i], queue_node))
         {
-            return true;
+            entry = queue_node->item;
+            if (*entry->id  == id)
+            {
+                return true;
+            }
         }
     }
 
-    // Search in priority fifo for task
-    for (list_iterator(queues->priority, queue_node))
-    {
-        entry = queue_node->item;
-        if (*entry->id  == id)
-        {
-            return true;
-        }
-    }
-
-    return false;
+    return false;  // Return false if nothing was found
 }
 
 
@@ -200,42 +185,43 @@ static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, u
  */ 
 static void link_queues(schedule_queues_t ** queues, uint8_t queue_size)
 {
+    list_node_t ** scheduling_pool = (*queues)->unscheduled->item;
+
     // Queue linking
     (*queues)->normal->next = NULL;
-    (*queues)->normal->item = NULL;
+    (*queues)->normal->item = (*queues)->normal;       // Save reference of the normal tail for O(1) pushing
     (*queues)->priority->next = NULL;
-    (*queues)->priority->item = (*queues)->normal;              // Save reference to achieve O(1) normal fifo push
-    (*queues)->unscheduled->item = (*queues)->priority;         // Save reference to achieve O(1) priority fifo push
-    (*queues)->unscheduled->next = *(*queues)->schedule_pool;   // Save reference to memory pool for assigning schedules
+    (*queues)->priority->item = (*queues)->priority;   // Save reference of the priorirty tail for O(1) pushing
+    (*queues)->unscheduled->next = *scheduling_pool;   // Save reference to memory pool for assigning schedules
 
     // Link up memory pool
     for (uint8_t i = 0; i < queue_size; i++)
     {
-        (*queues)->schedule_pool[i]->next = (i < queue_size - 1)? (*queues)->schedule_pool[i + 1]: NULL;
+        scheduling_pool[i]->next = (i < queue_size - 1)? scheduling_pool[i + 1]: NULL;
     }
 }
 
 
 // Check and prepare unscheduled task for scheduling
-static list_node_t * prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size)
+static list_node_t ** prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size)
 {
-    if (!queues_are_full(*queues))
+    if (queues_are_full(*queues))
     {
-        queue_entry_t * new_task = (*queues)->unscheduled->next->item;  // Fetch an unscheduled task from stack
-
-        // Check if packet has the correct size
-        if (pkt_size > new_task->pkt.size)
-        {
-            return NULL;
-        }
-
-        // Set up new task entry
-        *new_task->id = task_id;
-        new_task->pkt.byte_count = pkt_size;
-        memcpy(new_task->pkt.in_buf, pkt, pkt_size);
-
-        return (*queues)->unscheduled->next;
+        return NULL;
     }
 
-    return NULL;
+    queue_entry_t * new_task = (*queues)->unscheduled->next->item;  // Fetch an unscheduled task from stack
+
+    // Check if packet has the correct size
+    if (pkt_size > new_task->pkt.size)
+    {
+        return NULL;
+    }
+
+    // Set up new task entry
+    *new_task->id = task_id;
+    new_task->pkt.byte_count = pkt_size;
+    memcpy(new_task->pkt.in_buf, pkt, pkt_size);
+
+    return &(*queues)->unscheduled->next;
 }
