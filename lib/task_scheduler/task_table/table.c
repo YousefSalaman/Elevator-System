@@ -96,7 +96,7 @@ void register_task(task_table_t * table, uint8_t id, int payload_size, void * ta
             entry->size = NULL;
             if (payload_size > 0)
             {
-                memcpy(entry->size, &(uint16_t){payload_size}, sizeof(uint16_t));
+                memcpy(entry->size, &(uint8_t){payload_size}, sizeof(uint8_t *));
             }
         }
     }

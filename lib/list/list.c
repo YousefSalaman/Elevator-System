@@ -65,17 +65,15 @@ void clear_list(list_node_t ** head)
 
 
 // Create an array of lists
-list_node_t ** create_list_array(uint16_t size)
+list_node_t * create_list_array(uint16_t size)
 {
-    list_node_t ** array = malloc(sizeof(list_node_t *) * size);
+    list_node_t * array = malloc(sizeof(list_node_t) * size);
 
     if (array != NULL)
     {
-        list_node_t * node = *array;
-
-        for (uint16_t i = 0;  i < size; node = array[++i])
+        for (uint16_t i = 0;  i < size; i++)
         {
-            node->item = NULL;
+            array[i].item = NULL;
         }
     }
 

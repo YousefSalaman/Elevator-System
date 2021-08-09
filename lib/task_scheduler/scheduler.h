@@ -25,7 +25,7 @@ extern "C" {
  * task function, task id, and its associated payload. The callback must
  * define a way to run the task with the given information.
 */
-typedef void (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
+typedef uint8_t (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
 
 
 typedef struct 
@@ -40,39 +40,29 @@ typedef struct
 
     // Scheduler tx attributes
     // tx_schedule_cb tx_cb;
-    schedule_queues_t queues;
+    schedule_queues_t * queues;
 
 } task_scheduler_t;
 
 
 // Scheduler constants
 
-enum rx_pkt_offsets
-{
-    // Pre COBS decoding offsets
 
-    SCHEDULER_HDR_OFFSET = 4,
-
-    // Post COBS decoding offsets
-
-    TASK_ID_OFFSET = 1,
-    CRC_CHECKSUM_OFFSET = 2,
-    PAYLOAD_OFFSET = 4
-};
 
 
 /* Scheduler functions */
 
 // Task-related functions
 
-// void schedule_task(task_scheduler_t * scheduler, uint8_t id);
+void perform_task(task_scheduler_t * scheduler);
 void register_task(task_table_t * table, uint8_t id, int payload_size, void * task);
+void schedule_task(task_scheduler_t * scheduler, uint8_t id, uint8_t * pkt, uint8_t pkt_size, bool is_priority);
+
+#define reschedule_normal_task(scheduler) reschedule_queue_task((scheduler)->queues, false)
+#define reschedule_priority_task(scheduler) reschedule_queue_task((scheduler)->queues, true)
 
 void deinit_task_scheduler(task_scheduler_t * scheduler);
 task_scheduler_t init_task_scheduler(uint8_t queue_size, uint16_t table_size, uint16_t pkt_size);
-
-void process_scheduler_rx_pkt(task_scheduler_t * scheduler);
-bool process_incoming_byte(task_scheduler_t * scheduler, uint8_t byte);
 
 
 #ifdef __cplusplus

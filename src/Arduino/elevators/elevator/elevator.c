@@ -225,7 +225,7 @@ static uint8_t find_requested_floors(elevator_t * car)
                 }
             }
 
-        break;
+            break;
 
         case DOWN:  // Verify the lower floors for any requests
 
@@ -237,7 +237,7 @@ static uint8_t find_requested_floors(elevator_t * car)
                 }
             }
 
-        break;
+            break;
     }
 
     return NULL_FLOOR;  // Otherwise, no requests were found for the current direction

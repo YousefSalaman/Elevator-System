@@ -26,7 +26,7 @@ typedef struct list_node
 void pop(list_node_t ** head);
 void clear_list(list_node_t ** head);
 uint16_t get_list_length(list_node_t * head);
-list_node_t ** create_list_array(uint16_t size);
+list_node_t * create_list_array(uint16_t size);
 void erase_list_array(list_node_t ** array_head, uint16_t size);
 
 bool append(list_node_t ** tail, void * item, size_t item_size);

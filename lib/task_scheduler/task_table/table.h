@@ -18,7 +18,7 @@ typedef struct entry
 {
     uint8_t id;
     void * task;
-    uint16_t * size;
+    uint8_t * size;
     struct entry * next;
 
 } task_entry_t;

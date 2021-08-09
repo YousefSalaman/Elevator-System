@@ -1,6 +1,3 @@
-
-/* This script holds a FIFO queue object to store and manage incoming tasks. */
-
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,11 +5,20 @@
 #include "../scheduler.h"
 
 
+/*Scheduling queue constants */
+
+// Sections where the scheduling queue initialization can fail
+
+#define FAILED_SCHEDULING_QUEUES 0
+#define FAILED_MEMORY_POOL 1
+#define FAILED_QUEUE_ENTRIES 2
+
+
 /* Scheduling queue prototypes */
 
-static void link_queues(schedule_queues_t ** queues, uint8_t queue_size);
+static void link_queues(schedule_queues_t * queues, uint8_t queue_size);
 static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, uint8_t pkt_size);
-static list_node_t ** prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size);
+static list_node_t ** prepare_unscheduled_task(schedule_queues_t * queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size);
 
 
 /** Public scheduling queue methods **/
@@ -20,91 +26,107 @@ static list_node_t ** prepare_unscheduled_task(schedule_queues_t ** queues, uint
 // Initializes scheduling queues
 schedule_queues_t * init_scheduling_queues(uint8_t queue_size, uint8_t pkt_size)
 {
+    uint8_t init_fail_section;
     schedule_queues_t * queues = malloc(sizeof(schedule_queues_t));
 
     // Check if scheduler queues where initialized
     if (queues == NULL)
     {
-        goto handle_uninitialized_queues;
+        init_fail_section = FAILED_SCHEDULING_QUEUES;
+        goto handle_queue_deinit;
     }
 
+    // Define attributes for scheduling system
     queues->size = queue_size;
-    queues->unscheduled->item = malloc(sizeof(list_node_t *) * queue_size);  // Memory pool for scheduling tasks
+    queues->schedule_pool = malloc(sizeof(list_node_t) * queue_size);  // Memory pool for scheduling tasks
 
     // Check if the schedule pool and the entries inside it where initialized
-    if (queues->unscheduled->item == NULL || !init_queue_entries(queues, queue_size, pkt_size))
+    if (queues->schedule_pool== NULL || !init_queue_entries(queues, queue_size, pkt_size))
     {
-        goto handle_uninitialized_queues;
+        init_fail_section = (queues->schedule_pool == NULL)? FAILED_MEMORY_POOL: FAILED_QUEUE_ENTRIES;
+        goto handle_queue_deinit;
     }
 
-    link_queues(&queues, queue_size);
+    link_queues(queues, queue_size);
     return queues;
 
-// Free up memory if some part of the queues were not initialized correctly
-handle_uninitialized_queues:
+handle_queue_deinit:
 
-    if (queues != NULL)
+    // Intentionally using switch fall-through to free up memory in order
+    // when a part of scheduling fifos are not initialized correctly
+    switch (init_fail_section)
     {
-        if (queues->unscheduled->item != NULL)
-        {
-            free(queues->unscheduled->item);
-        }
-        free(queues);
-    }
-    return NULL;
+        case FAILED_QUEUE_ENTRIES:
+            free(queues->schedule_pool);
+        
+        case FAILED_MEMORY_POOL:
+            free(queues);
+
+        case FAILED_SCHEDULING_QUEUES:
+            return NULL;;
+    }    
 }
 
 
-// Uninitialize task queue
-void deinit_task_queue(schedule_queues_t ** queues)
+// Uninitialize scheduling queues
+void deinit_scheduling_queues(schedule_queues_t * queues)
 {
-    list_node_t ** scheduling_pool = (*queues)->unscheduled->item;
-
-    for (uint8_t i = 0; i < (*queues)->size; i++)
+    for (uint8_t i = 0; i < queues->size; i++)
     {
-        queue_entry_t * entry = scheduling_pool[i]->item;
+        queue_entry_t * entry = queues->schedule_pool[i].item;
 
         deinit_serial_pkt(&entry->pkt);
         free(entry);
     }
 
-    free(scheduling_pool);
-    free(*queues);
+    free(queues->schedule_pool);
+    free(queues);
 }
 
 
-bool push_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t * pkt, uint8_t pkt_size, bool is_priority)
+bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t * pkt, uint8_t pkt_size, bool is_priority)
 {
-    list_node_t ** unscheduled_task = prepare_unscheduled_task(queues, task_id, pkt, pkt_size);
+    list_node_t ** unscheduled_task_node = prepare_unscheduled_task(queues, task_id, pkt, pkt_size);
 
-    if (unscheduled_task != NULL)  // If there are any unscheduled tasks
+    if (unscheduled_task_node != NULL)  // If there are any unscheduled tasks
     {
-        list_node_t ** last_scheduled_task;  // Most recent scheduled task in corresponding fifo
+        // Most recent scheduled task in corresponding fifo
+        list_node_t ** tail_task_node = (is_priority)? &queues->priority_tail: &queues->normal_tail;
 
-        last_scheduled_task = (is_priority)? &(*queues)->priority->item: &(*queues)->normal->item;
-        move_to_back(last_scheduled_task, unscheduled_task);
+        move_to_back(tail_task_node, unscheduled_task_node);
     }
 
-    return unscheduled_task != NULL;
+    return unscheduled_task_node != NULL;
 }
 
 
-void pop_task(schedule_queues_t ** queues, bool is_priority)
+void pop_task(schedule_queues_t * queues, bool is_priority)
 {
-    if (!are_queues_empty(*queues))
+    if (!queues_are_empty(queues))
     {
-        list_node_t ** first_scheduled_task;  // Oldest scheduled task in corresponding fifo
-
-        first_scheduled_task = (is_priority)? &(*queues)->priority->next: &(*queues)->normal->next;
+        // Oldest scheduled task in corresponding fifo
+        list_node_t ** head_node = (is_priority)? &queues->priority_head: &queues->normal_head;
 
         // Reset old task
-        queue_entry_t * completed_task = (*first_scheduled_task)->item;
+        queue_entry_t * completed_task = (*head_node)->item;
 
         completed_task->id = NULL;
         completed_task->pkt.byte_count = 0;
+        completed_task->rescheduled = false;
 
-        move_to_front(&(*queues)->unscheduled->next, first_scheduled_task);
+        move_to_front(&queues->unscheduled, head_node);  // Push completed task to unscheduled task
     }
+}
+
+
+void reschedule_queue_task(schedule_queues_t * queues, bool is_priority)
+{
+    list_node_t ** head_node = (is_priority)? &queues->priority_head: &queues->normal_head;
+    list_node_t ** tail_node = (is_priority)? &queues->priority_tail: &queues->normal_tail;
+
+    ((queue_entry_t *) (*head_node)->item)->rescheduled = true;
+
+    move_to_back(tail_node, head_node);
 }
 
 
@@ -112,7 +134,7 @@ void pop_task(schedule_queues_t ** queues, bool is_priority)
 bool in_queue(schedule_queues_t * queues, uint8_t id)
 {
     queue_entry_t * entry;
-    list_node_t * queue_array[] = {queues->normal, queues->priority};
+    list_node_t * queue_array[] = {queues->normal_head, queues->priority_head};
 
     // Search the normal and priority pending task fifos for a matching task id
     for (uint8_t i = 0; i < 2; i++)
@@ -142,7 +164,7 @@ static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, u
     for (i = 0; i < queue_size; i++)
     {
         queue_entry_t * entry = malloc(sizeof(queue_entry_t));
-        queues->schedule_pool[i]->item = entry;
+        queues->schedule_pool[i].item = entry;
 
         // If entry was not initialized correctly
         if (entry == NULL)
@@ -150,11 +172,13 @@ static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, u
             break;
         }
 
+        // Initialize entry attributes
         entry->id = NULL;
+        entry->rescheduled = false;
         entry->pkt = init_serial_pkt(pkt_size);
 
         // If buffers where not initialized correctly
-        if (entry->pkt.in_buf == NULL || entry->pkt.out_buf == NULL)
+        if (entry->pkt.buf == NULL)
         {
             break;
         }
@@ -165,7 +189,7 @@ static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, u
     {
         for (; i < 0; i--)
         {
-            queue_entry_t * entry = queues->schedule_pool[i]->item;
+            queue_entry_t * entry = queues->schedule_pool[i].item;
         
             deinit_serial_pkt(&entry->pkt);
             if (entry != NULL)
@@ -183,34 +207,32 @@ static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, u
  * 
  * TODO: May replace with inline function.
  */ 
-static void link_queues(schedule_queues_t ** queues, uint8_t queue_size)
+static void link_queues(schedule_queues_t * queues, uint8_t queue_size)
 {
-    list_node_t ** scheduling_pool = (*queues)->unscheduled->item;
-
     // Queue linking
-    (*queues)->normal->next = NULL;
-    (*queues)->normal->item = (*queues)->normal;       // Save reference of the normal tail for O(1) pushing
-    (*queues)->priority->next = NULL;
-    (*queues)->priority->item = (*queues)->priority;   // Save reference of the priorirty tail for O(1) pushing
-    (*queues)->unscheduled->next = *scheduling_pool;   // Save reference to memory pool for assigning schedules
+    queues->normal_head = NULL;
+    queues->normal_tail = queues->normal_head;
+    queues->priority_head = NULL;
+    queues->priority_tail = queues->priority_head;
+    queues->unscheduled = queues->schedule_pool;
 
     // Link up memory pool
     for (uint8_t i = 0; i < queue_size; i++)
     {
-        scheduling_pool[i]->next = (i < queue_size - 1)? scheduling_pool[i + 1]: NULL;
+        queues->schedule_pool[i].next = (i < queue_size - 1)? &queues->schedule_pool[i + 1]: NULL;
     }
 }
 
 
 // Check and prepare unscheduled task for scheduling
-static list_node_t ** prepare_unscheduled_task(schedule_queues_t ** queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size)
+static list_node_t ** prepare_unscheduled_task(schedule_queues_t * queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size)
 {
-    if (queues_are_full(*queues))
+    if (queues_are_full(queues))
     {
         return NULL;
     }
 
-    queue_entry_t * new_task = (*queues)->unscheduled->next->item;  // Fetch an unscheduled task from stack
+    queue_entry_t * new_task = queues->unscheduled->item;  // Fetch an unscheduled task from stack
 
     // Check if packet has the correct size
     if (pkt_size > new_task->pkt.size)
@@ -221,7 +243,7 @@ static list_node_t ** prepare_unscheduled_task(schedule_queues_t ** queues, uint
     // Set up new task entry
     *new_task->id = task_id;
     new_task->pkt.byte_count = pkt_size;
-    memcpy(new_task->pkt.in_buf, pkt, pkt_size);
+    memcpy(new_task->pkt.buf, pkt, pkt_size);
 
-    return &(*queues)->unscheduled->next;
+    return &queues->unscheduled;
 }
