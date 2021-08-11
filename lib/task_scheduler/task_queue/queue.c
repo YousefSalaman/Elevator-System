@@ -10,15 +10,15 @@
 // Sections where the scheduling queue initialization can fail
 
 #define FAILED_SCHEDULING_QUEUES 0
-#define FAILED_MEMORY_POOL 1
-#define FAILED_QUEUE_ENTRIES 2
+#define FAILED_MEMORY_POOL       1
+#define FAILED_QUEUE_ENTRIES     2
 
 
 /* Scheduling queue prototypes */
 
 static void link_queues(schedule_queues_t * queues, uint8_t queue_size);
 static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, uint8_t pkt_size);
-static list_node_t ** prepare_unscheduled_task(schedule_queues_t * queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size);
+static list_node_t ** prepare_unscheduled_task(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t* payload_pkt, uint8_t payload_size);
 
 
 /** Public scheduling queue methods **/
@@ -84,9 +84,9 @@ void deinit_scheduling_queues(schedule_queues_t * queues)
 }
 
 
-bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t * pkt, uint8_t pkt_size, bool is_priority)
+bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size, bool is_priority)
 {
-    list_node_t ** unscheduled_task_node = prepare_unscheduled_task(queues, task_id, pkt, pkt_size);
+    list_node_t ** unscheduled_task_node = prepare_unscheduled_task(queues, task_id, task_type, payload_pkt, payload_size);
 
     if (unscheduled_task_node != NULL)  // If there are any unscheduled tasks
     {
@@ -94,6 +94,21 @@ bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t * pkt, uint8
         list_node_t ** tail_task_node = (is_priority)? &queues->priority_tail: &queues->normal_tail;
 
         move_to_back(tail_task_node, unscheduled_task_node);
+    }
+
+    return unscheduled_task_node != NULL;
+}
+
+
+bool push_task_to_front(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size, bool is_priority)
+{
+    list_node_t ** unscheduled_task_node = prepare_unscheduled_task(queues, task_id, task_type, payload_pkt, payload_size);
+
+    if (unscheduled_task_node != NULL)
+    {
+        list_node_t ** head_task_node = (is_priority)? &queues->priority_head: &queues->normal_head;
+
+        move_to_front(head_task_node, unscheduled_task_node);
     }
 
     return unscheduled_task_node != NULL;
@@ -121,8 +136,19 @@ void pop_task(schedule_queues_t * queues, bool is_priority)
 
 void reschedule_queue_task(schedule_queues_t * queues, bool is_priority)
 {
-    list_node_t ** head_node = (is_priority)? &queues->priority_head: &queues->normal_head;
-    list_node_t ** tail_node = (is_priority)? &queues->priority_tail: &queues->normal_tail;
+    list_node_t ** head_node;
+    list_node_t ** tail_node;
+
+    if (is_priority)
+    {
+        head_node = &queues->priority_head;
+        tail_node = &queues->priority_tail;
+    }
+    else
+    {
+        head_node = &queues->normal_head;
+        tail_node = &queues->normal_tail;
+    }
 
     ((queue_entry_t *) (*head_node)->item)->rescheduled = true;
 
@@ -173,7 +199,6 @@ static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, u
         }
 
         // Initialize entry attributes
-        entry->id = NULL;
         entry->rescheduled = false;
         entry->pkt = init_serial_pkt(pkt_size);
 
@@ -225,7 +250,7 @@ static void link_queues(schedule_queues_t * queues, uint8_t queue_size)
 
 
 // Check and prepare unscheduled task for scheduling
-static list_node_t ** prepare_unscheduled_task(schedule_queues_t * queues, uint8_t task_id, uint8_t* pkt, uint8_t pkt_size)
+static list_node_t ** prepare_unscheduled_task(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t* payload_pkt, uint8_t payload_size)
 {
     if (queues_are_full(queues))
     {
@@ -234,16 +259,10 @@ static list_node_t ** prepare_unscheduled_task(schedule_queues_t * queues, uint8
 
     queue_entry_t * new_task = queues->unscheduled->item;  // Fetch an unscheduled task from stack
 
-    // Check if packet has the correct size
-    if (pkt_size > new_task->pkt.size)
+    if (!pass_outgoing_pkt(&new_task->pkt, task_id, task_type, payload_pkt, payload_size))
     {
         return NULL;
     }
-
-    // Set up new task entry
-    *new_task->id = task_id;
-    new_task->pkt.byte_count = pkt_size;
-    memcpy(new_task->pkt.buf, pkt, pkt_size);
 
     return &queues->unscheduled;
 }

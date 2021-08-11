@@ -49,6 +49,8 @@ typedef struct task_queues
 void deinit_scheduling_queues(schedule_queues_t * queues);
 schedule_queues_t * init_scheduling_queues(uint8_t queue_size, uint8_t pkt_size);
 
+#define get_task_type(entry) (entry)->pkt.buf[TASK_TYPE_OFFSET]
+
 // Queue peeking methods
 
 /**Peek at the head of one of the scheduling fifos
@@ -57,8 +59,8 @@ schedule_queues_t * init_scheduling_queues(uint8_t queue_size, uint8_t pkt_size)
  * scheduling fifo.
 */
 
-#define peek_normal(queues) (queue_entry_t *){(queues)->normal_head->item}  // Pass entry of the normal scheduling fifo
-#define peek_priority(queues) (queue_entry_t *){(queues)->priority_head->item}  // Pass entry of the priority scheduling fifo
+#define peek_normal(queues) (queues)->normal_head->item // Pass entry of the normal scheduling fifo
+#define peek_priority(queues) (queues)->priority_head->item  // Pass entry of the priority scheduling fifo
 
 // Queue popping methods
 
@@ -69,10 +71,12 @@ void pop_task(schedule_queues_t * queues, bool is_priority);
 
 // Queue pushing methods
 
-bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t * pkt, uint8_t pkt_size, bool is_priority);
+bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size, bool is_priority);
 
 #define push_normal_task(queues, task_id, pkt, pkt_size) push_task(queues, task_id, pkt, pkt_size, false)
 #define push_priority_task(queues, task_id, pkt, pkt_size) push_task(queues, task_id, pkt, pkt_size, true)
+
+bool push_task_to_front(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size, bool is_priority);
 
 // Rescheduling queue methods
 

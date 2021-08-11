@@ -1,29 +1,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <Arduino.h>
+
 #include "scheduler.h"
-#include "cobs/cobs.h"
 
 
-/* Scheduler constants */
+/* Scheduler macro functions */
 
+#define reschedule_normal_task(scheduler) reschedule_queue_task((scheduler)->queues, false)
+#define reschedule_priority_task(scheduler) reschedule_queue_task((scheduler)->queues, true)
 
-/* Scheduler function prototypes */
+#define prioritize_task(scheduler) move_to_front(&(scheduler)->queues->priority_head, &(scheduler)->queues->normal_head)
 
-static void print_decode_err(uint8_t err_type, void * args);
-static task_entry_t * check_scheduler_rx_pkt(task_scheduler_t * scheduler, serial_pkt_t * rx_pkt);
+#define check_reply_timer(scheduler, entry) ((entry)->rescheduled)? (scheduler)->timer_cb() - (scheduler)->start_time >= LONG_TIMER: (scheduler)->timer_cb() - (scheduler)->start_time >= SHORT_TIMER
 
 
 /* Public scheduler functions */
 
 // Initialize task scheduler
-task_scheduler_t init_task_scheduler(uint8_t queue_size, uint16_t table_size, uint16_t pkt_size)
+task_scheduler_t init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb)
 {
     task_scheduler_t scheduler;
 
-    scheduler.rx_pkt = init_serial_pkt(pkt_size);
+    scheduler.rx_cb = rx_cb;
+    scheduler.tx_cb = tx_cb;
+    scheduler.timer_cb = timer_cb;
+    scheduler.rx_pkt = init_serial_pkt(PKT_BUF_SIZE);
     scheduler.table = init_task_table(table_size);
-    scheduler.queues = init_scheduling_queues(queue_size, pkt_size);
+    scheduler.queues = init_scheduling_queues(queue_size, PKT_BUF_SIZE);
 
     return scheduler;
 }
@@ -38,11 +43,30 @@ void deinit_task_scheduler(task_scheduler_t * scheduler)
 
 
 // Schedule a task for an external device to perform
-void schedule_task(task_scheduler_t * scheduler, uint8_t id, uint8_t * pkt, uint8_t pkt_size, bool is_priority)
+void schedule_task(task_scheduler_t * scheduler, uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bool is_priority, bool is_fast)
 {
     if (!in_queue(scheduler->queues, id))
     {
-        push_task(scheduler->queues, id, pkt, pkt_size, is_priority);
+        // Send a task to free up space in queues
+        if (queues_are_full(scheduler->queues))
+        {
+            if (is_priority_queue_empty(scheduler->queues))
+            {
+                prioritize_task(scheduler);
+            }
+            send_task(scheduler);
+        }
+
+        // Schedule task depending on the option that was chosen
+        if (is_fast)
+        {
+            push_task_to_front(scheduler->queues, id, type, pkt, pkt_size, true);
+            send_task(scheduler);
+        }
+        else
+        {
+            push_task(scheduler->queues, id, type, pkt, pkt_size, is_priority);
+        }
     }
 }
 
@@ -56,59 +80,61 @@ void perform_task(task_scheduler_t * scheduler)
 {
     uint8_t ret_code;
     serial_pkt_t * rx_pkt = &scheduler->rx_pkt;
-    task_entry_t * entry = check_rx_pkt(scheduler->table, rx_pkt);
+    task_entry_t * entry = process_incoming_pkt(scheduler->table, rx_pkt);
 
-    // If all checks passed, run rx callback
-    if (entry != NULL)
+    if (entry != NULL) // If all checks passed, run rx callback (this is the handler for external tasks)
     {
         ret_code = scheduler->rx_cb(entry->id, entry->task, rx_pkt->buf + PAYLOAD_OFFSET);
 
-        (ret_code)? alert_task_failure(entry->id): alert_task_success(entry->id);
+        (ret_code)? alert_task_failure(entry->id, ret_code): alert_task_success(entry->id);
     }
+
+    else if (get_task_type(rx_pkt) == INTERNAL_TASK)
+    {
+
+    }
+
 
     rx_pkt->byte_count = 0;  // Reset rx packet buffer
 }
 
 
+void send_task(task_scheduler_t * scheduler)
+{
+    if (!queues_are_empty(scheduler->queues))
+    {
+        schedule_queues_t * queues = scheduler->queues;
+        queue_entry_t * entry = is_priority_queue_empty(queues)? peek_normal(queues): peek_priority(queues);
 
-// Send decode errors for computer to print out in its terminal
-// static void print_decode_err(uint8_t err_type, void * args)
-// {
-//     char * err_msg;
-//     uint8_t msg_length = DECODE_ERR_MSG_SIZE + decode_err_msg_sizes[err_type];
+        process_outgoing_pkt(&entry->pkt);
 
-//     err_msg = malloc(sizeof(char) * msg_length);  // Allocate enough space for error message
+        if (!is_priority_queue_empty(scheduler->queues))  // Send priority tasks
+        {
+            scheduler->tx_cb(entry->pkt.buf, entry->pkt.byte_count);
+            pop_priority_task(scheduler->queues);
+        }
+        else  // Send normal task
+        {
+            bool reply_time_passed = check_reply_timer(scheduler, entry);
 
-//     // Create error message
-//     strcpy(err_msg, "Decode error - ");
-//     switch (err_type)
-//     {
-//         case SHORT_PKT_HDR_SIZE:
-//             strcat(err_msg, "packet header was not fully formed\n");
-//             break;
-        
-//         case CRC_CHECKSUM_FAIL:
-//             strcat(err_msg, "checksum failed\n");
-//             break;
-        
-//         case TASK_NOT_REGISTERED:
-//             strcat(err_msg, "no task has been registered with an ID of ");
-//             strcat(err_msg, itoa(*(uint8_t *) args, err_msg, 10));
-//             strcat(err_msg, "\n");
-//             break;
-        
-//         case INCORRECT_PAYLOAD_SIZE:
-//             strcat(err_msg, "expected ");
-//             strcat(err_msg, itoa(((uint16_t *) args)[0], err_msg, 10));
-//             strcat(err_msg, " bytes, but received ");
-//             strcat(err_msg, itoa(((uint16_t *) args)[1], err_msg, 10));
-//             strcat(err_msg, " bytes\n");
-//             break;
-//     }
+            // Check if the task has been sent already
+            if (scheduler->prev_task != *entry->id)
+            {
+                scheduler->prev_task = *entry->id;
+                scheduler->start_time = millis();
+                scheduler->tx_cb(entry->pkt.buf, entry->pkt.byte_count);  // Run the serial tx routine
+            }
 
-//     // TODO: Add the logger function in here
-
-//     free(err_msg);
-// }
-
-
+            // Checks for if the allowed reply time has passed
+            if (!entry->rescheduled && reply_time_passed)  // First reply window range check
+            {
+                entry->rescheduled = true;
+                reschedule_normal_task(scheduler);
+            }
+            else if (entry->rescheduled && reply_time_passed)  // Second reply window range check
+            {
+                pop_normal_task(scheduler->queues);
+            }
+        }
+    }
+}

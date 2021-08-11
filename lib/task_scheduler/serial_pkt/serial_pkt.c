@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 
 #include "serial_pkt.h"
 
@@ -8,9 +9,9 @@
 
 // Possible decoding errors
 
-#define SHORT_PKT_HDR_SIZE 0
-#define CRC_CHECKSUM_FAIL 1
-#define TASK_NOT_REGISTERED 2
+#define SHORT_PKT_HDR_SIZE     0
+#define CRC_CHECKSUM_FAIL      1
+#define TASK_NOT_REGISTERED    2
 #define INCORRECT_PAYLOAD_SIZE 3
 
 // Possible encoding errors
@@ -42,7 +43,8 @@ void deinit_serial_pkt(serial_pkt_t * pkt)
 
 
 // Decode and check for packet validity
-task_entry_t * check_rx_pkt(task_table_t table, serial_pkt_t * rx_pkt)
+// TODO: Change name to process_incoming_pkt
+task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
 {
     static uint8_t out_buf[PKT_BUF_SIZE];
 
@@ -56,6 +58,12 @@ task_entry_t * check_rx_pkt(task_table_t table, serial_pkt_t * rx_pkt)
     size_t pkt_size = cobs_decode(rx_pkt->buf, rx_pkt->size, out_buf);  // Decode packet and pass to new buffer
 
     // TODO: Put crc stuff in here
+
+    // If task is an internal task, skip table lookup
+    if (!rx_pkt->buf[TASK_TYPE_OFFSET])
+    {
+        return NULL;
+    }
 
     uint8_t task_id = out_buf[TASK_ID_OFFSET];
     task_entry_t * entry = lookup_task(table, task_id);
@@ -82,6 +90,7 @@ task_entry_t * check_rx_pkt(task_table_t table, serial_pkt_t * rx_pkt)
 
 
 // Process incoming information byte-by-byte
+// TODO: Change name to check_incoming_byte
 bool process_incoming_byte(serial_pkt_t * rx_pkt, uint8_t byte)
 {
     if (rx_pkt->byte_count < rx_pkt->size)  // Add element to the rx packet buffer
@@ -98,5 +107,33 @@ bool process_incoming_byte(serial_pkt_t * rx_pkt, uint8_t byte)
 }
 
 
-bool process_outgoing_pkt()
-{}
+bool pass_outgoing_pkt(serial_pkt_t * tx_pkt, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size)
+{
+    // Check if the task payload is small enough to fit
+    if (payload_size + PAYLOAD_OFFSET < tx_pkt->size)
+    {
+        return false;
+    }
+
+    // Pass task attributes to tx_pkt buffer
+    tx_pkt->buf[TASK_ID_OFFSET] = task_id;
+    tx_pkt->buf[TASK_TYPE_OFFSET] = task_type;
+    memcpy(tx_pkt->buf + PAYLOAD_OFFSET, payload_pkt, payload_size);
+
+    tx_pkt->byte_count = PAYLOAD_OFFSET + payload_size;
+
+    return true;
+}
+
+
+bool process_outgoing_pkt(serial_pkt_t * tx_pkt)
+{
+    static uint8_t in_buf[PKT_BUF_SIZE];
+
+    // Pass tx_pkt buffer into a separate buffer
+    memcpy(in_buf, tx_pkt->buf, tx_pkt->byte_count);
+
+    // Put crc stuff in here
+
+    tx_pkt->byte_count = cobs_encode(in_buf, tx_pkt->byte_count, tx_pkt->buf);
+}

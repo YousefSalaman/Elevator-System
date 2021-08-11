@@ -13,7 +13,7 @@ void receive_serial_pkt(void)
     
     while ((byte = Serial.read()) >= 0)
     {
-        if (process_incoming_byte(&scheduler.rx_pkt, byte))  // If a packet is found, then process it entirely
+        if (store_rx_byte(scheduler, byte))  // If a packet is found, then process it entirely
         {
             perform_task(&scheduler);
         }
