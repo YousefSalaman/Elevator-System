@@ -45,6 +45,7 @@ typedef struct
 void deinit_task_table(task_table_t table);
 task_table_t init_task_table(uint16_t size);
 task_entry_t * lookup_task(task_table_t table, uint8_t id);
+void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, void * task);
 
 
 #ifdef __cplusplus

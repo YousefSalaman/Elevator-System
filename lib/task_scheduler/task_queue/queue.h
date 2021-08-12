@@ -49,8 +49,6 @@ typedef struct task_queues
 void deinit_scheduling_queues(schedule_queues_t * queues);
 schedule_queues_t * init_scheduling_queues(uint8_t queue_size, uint8_t pkt_size);
 
-#define get_task_type(entry) (entry)->pkt.buf[TASK_TYPE_OFFSET]
-
 // Queue peeking methods
 
 /**Peek at the head of one of the scheduling fifos
@@ -59,8 +57,8 @@ schedule_queues_t * init_scheduling_queues(uint8_t queue_size, uint8_t pkt_size)
  * scheduling fifo.
 */
 
-#define peek_normal(queues) (queues)->normal_head->item // Pass entry of the normal scheduling fifo
-#define peek_priority(queues) (queues)->priority_head->item  // Pass entry of the priority scheduling fifo
+#define peek_normal(queues) ((queue_entry_t *) (queues)->normal_head->item)      // Pass entry of the normal scheduling fifo
+#define peek_priority(queues) ((queue_entry_t *) (queues)->priority_head->item)  // Pass entry of the priority scheduling fifo
 
 // Queue popping methods
 

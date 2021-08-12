@@ -3,9 +3,15 @@
 
 #include "serial_pkt.h"
 
-#include "cobs/cobs.h"
+#include "scheduler.h"
+#include "../cobs/cobs.h"
 
 /* Private serial constants */
+
+// Internal decode pseudo-command values
+
+#define EXPECTED_PKT_SIZE 0
+#define RECEIVED_PKT_SIZE 1
 
 // Possible decoding errors
 
@@ -51,7 +57,7 @@ task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
     // Check for minimum header length
     if (rx_pkt->byte_count < SCHEDULER_HDR_OFFSET)
     {
-        print_decode_err(SHORT_PKT_HDR_SIZE, NULL);
+        print_internal_message(PKT_DECODE, SHORT_PKT_HDR_SIZE); 
         return NULL;
     }
 
@@ -71,7 +77,7 @@ task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
     // Check if entry was registered
     if (entry == NULL)
     {
-        print_decode_err(TASK_NOT_REGISTERED, &task_id);
+        print_internal_message(PKT_DECODE, TASK_NOT_REGISTERED); 
         return NULL;
     }
 
@@ -80,7 +86,9 @@ task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
     {
         if (pkt_size != *entry->size + PAYLOAD_OFFSET - 1)
         {
-            print_decode_err(INCORRECT_PAYLOAD_SIZE, (uint16_t []){*entry->size + PAYLOAD_OFFSET - 1, pkt_size});
+            modify_internal_task_val(PKT_DECODE, RECEIVED_PKT_SIZE, (uint16_t []){pkt_size}, sizeof(uint16_t));
+            modify_internal_task_val(PKT_DECODE, EXPECTED_PKT_SIZE, (uint16_t []){*entry->size + PAYLOAD_OFFSET}, sizeof(uint16_t));
+            print_internal_message(PKT_DECODE, INCORRECT_PAYLOAD_SIZE);
             return NULL;
         }
     }
@@ -90,7 +98,6 @@ task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
 
 
 // Process incoming information byte-by-byte
-// TODO: Change name to check_incoming_byte
 bool process_incoming_byte(serial_pkt_t * rx_pkt, uint8_t byte)
 {
     if (rx_pkt->byte_count < rx_pkt->size)  // Add element to the rx packet buffer
@@ -136,4 +143,6 @@ bool process_outgoing_pkt(serial_pkt_t * tx_pkt)
     // Put crc stuff in here
 
     tx_pkt->byte_count = cobs_encode(in_buf, tx_pkt->byte_count, tx_pkt->buf);
+
+    return true;
 }

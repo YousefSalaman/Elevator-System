@@ -43,6 +43,7 @@ bool process_incoming_byte(serial_pkt_t * rx_pkt, uint8_t byte);
 task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt);
 bool pass_outgoing_pkt(serial_pkt_t * tx_pkt, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size);
 
-#define get_task_type(pkt) pkt->buf[TASK_TYPE_OFFSET]
+#define get_task_id(pkt) (pkt)->buf[TASK_ID_OFFSET]
+#define get_task_type(pkt) (pkt)->buf[TASK_TYPE_OFFSET]
 
 #endif

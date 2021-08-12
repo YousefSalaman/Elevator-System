@@ -2,9 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <list.h>
-#include "../scheduler.h"
-
 #include "table.h"
 
 
@@ -76,7 +73,7 @@ task_entry_t * lookup_task(task_table_t table, uint8_t id)
  * disable packet size checking this task (i.e., payload size is set to
  * NULL.)
  */
-void register_task(task_table_t * table, uint8_t id, int payload_size, void * task) 
+void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, void * task) 
 {
     if (lookup_task(*table, id) == NULL)
     {
