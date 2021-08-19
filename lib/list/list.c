@@ -65,6 +65,7 @@ void clear_list(list_node_t ** head)
 
 
 // Create an array of lists
+// TODO: Don't need this array thing. Can create an array of pointers.
 list_node_t * create_list_array(uint16_t size)
 {
     list_node_t * array = malloc(sizeof(list_node_t) * size);
@@ -74,6 +75,7 @@ list_node_t * create_list_array(uint16_t size)
         for (uint16_t i = 0;  i < size; i++)
         {
             array[i].item = NULL;
+            array[i].next = NULL;
         }
     }
 

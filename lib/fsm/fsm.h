@@ -33,7 +33,7 @@ typedef struct
 {
     state_t ** states;    // List of states
     uint8_t state_cnt;    // Amount of states in the state machine
-    uint16_t curr_state;  // Current active state in the state machine
+    state_t * curr_state; // Current active state in the state machine
 
 } fsm_t;
 

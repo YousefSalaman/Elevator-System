@@ -9,6 +9,7 @@
 
 #include <fsm.h>
 #include <list.h>
+#include <scheduler.h>
 
 
 #ifdef __cplusplus
@@ -19,6 +20,18 @@ extern "C" {
 
 #define ELEVATOR_STATE_CNT 4
 
+
+/**Elevator task IDs
+ * 
+ * 
+ * 
+ * 
+*/
+enum 
+{
+    ALERT_PERSON_ADDITION,
+    UPDATE_CAR_CAPACITY_STATUS,
+};
 
 /**Movement types
  * 
@@ -105,8 +118,7 @@ typedef struct
 {
     uint8_t temp;          // Current temperature
     uint8_t floor;         // Current floor
-    uint16_t weight;       // Current weight
-    uint8_t headcount;     // Current people count
+    uint8_t weight;       // Current weight
     uint8_t is_light_on;   // Current light state
     uint8_t is_door_open;  // Current door state
 
@@ -119,8 +131,7 @@ typedef struct
     const uint8_t floor;     // Maximum floor the elevator can reach
     const uint8_t h_temp;    // Maximum temperature the cab can reach
     const uint8_t l_temp;    // Minimum temperature the cab can reach
-    const uint16_t weight;   // Maximum weight the elevator can handle
-    const uint8_t capacity;  // Maximum people capacity
+    const uint8_t weight;   // Maximum weight the elevator can handle
 
 } car_limits_t;
 
@@ -128,13 +139,18 @@ typedef struct
 // Convinient attributes
 typedef struct
 {
+    // State tracking attributes
     uint8_t move;             // States current movement
-    uint64_t init_time;       // Initial time marker for an elevator operation
-    uint8_t next_floor;       // Next floor the elevator must go to
     bool action_started;      // Indicate whether or not an action has started
-    bool* pressed_floors;     // 
-    list_node_t ** riders;    // Array that lists stores people info for each floor
     bool maintenance_needed;  // Elevator needs maintenance
+    unsigned long init_time;  // Initial time marker for an elevator operation
+
+
+    // Floor management attributes
+    uint8_t next_floor;             // Next floor the elevator must go to
+    list_node_t * riders;           // Stack for unasigned riders
+    list_node_t * person_pool;      // Memory pool for riders
+    list_node_t ** pressed_floors;  // Stacks to store riders
 
 } car_attrs_t;
 
@@ -147,7 +163,7 @@ typedef struct
 typedef struct
 {
     fsm_t behavior;       // Behavior of the elevator
-    car_state_t state;    // State of the elevator
+    car_state_t state;    // Quantitative information of the elevator
     car_attrs_t attrs;    // Additional attributes of the elevator
     car_limits_t limits;  // Limits of the elevator
 
@@ -173,6 +189,8 @@ extern state_t * elevator_states[];
 */
 #define elevator_is_null(car) (car->attrs.riders == NULL) || (car->behavior == NULL) || (car->attrs.pressed_buttons == NULL)
 
+// Check if first rider object in floor stack is being used as a placeholder to request a floor
+#define front_rider_is_not_empty(car, floor) (((person_t *)((car)->attrs.pressed_floors[(floor)]->item))->weight)
 
 /**See what floor was requested
  * 
@@ -220,8 +238,9 @@ void exit_elevator(elevator_t * car);
 void move_elevator(elevator_t * car);
 void deinit_elevator(elevator_t * car);
 uint8_t find_next_floor(elevator_t * car);
-elevator_t init_elevator(uint8_t * limits);
 void enter_elevator(elevator_t * car, uint8_t * attrs);
+elevator_t init_elevator(uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight);
+
 
 #ifdef __cplusplus
 }

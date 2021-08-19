@@ -6,21 +6,19 @@
 #include "task_table/table.h"
 
 
-/** Scheduler object
+/**Scheduler object
  * 
  */
-typedef struct 
+typedef struct
 {
-    // Scheduler rx attributes
+    // Rx attributes
+    task_table_t table;
     serial_pkt_t rx_pkt;
     rx_schedule_cb rx_cb;
 
-    // Scheduler tx attributes
+    // Tx attributes
+    uint8_t * prev_task;
     tx_schedule_cb tx_cb;
-
-    // Task scheduling attributes
-    uint8_t prev_task;
-    task_table_t table;
     unsigned long start_time;
     schedule_queues_t * queues;
     timer_schedule_cb timer_cb;
@@ -38,8 +36,6 @@ static task_scheduler_t scheduler;
 
 #define prioritize_task() move_to_front(&scheduler.queues->priority_head, &scheduler.queues->normal_head)
 
-#define check_reply_timer(entry) ((entry)->rescheduled)? scheduler.timer_cb() - scheduler.start_time >= LONG_TIMER: scheduler.timer_cb() - scheduler.start_time >= SHORT_TIMER
-
 
 /* Scheduler function prototypes */
 
@@ -51,6 +47,8 @@ static void process_current_task(void);
 // Initialize task scheduler
 void init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb)
 {
+    scheduler.prev_task = NULL;
+
     scheduler.rx_cb = rx_cb;
     scheduler.tx_cb = tx_cb;
     scheduler.timer_cb = timer_cb;
@@ -64,6 +62,7 @@ void init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb
 void deinit_task_scheduler(void)
 {
     deinit_task_table(scheduler.table);
+    deinit_serial_pkt(&scheduler.rx_pkt);
     deinit_scheduling_queues(scheduler.queues);
 }
 
@@ -155,12 +154,22 @@ void send_task(void)
         }
         else  // Send normal task
         {
-            bool reply_time_passed = check_reply_timer(entry);
+            bool reply_time_passed;
+
+            // Check if elapsed time passed the reply window
+            if (entry->rescheduled)
+            {
+                reply_time_passed = scheduler.timer_cb() - scheduler.start_time >= LONG_TIMER;
+            }
+            else
+            {
+                reply_time_passed = scheduler.timer_cb() - scheduler.start_time >= SHORT_TIMER;
+            }
 
             // Check if the task has been sent already
-            if (scheduler.prev_task != *entry->id)
+            if (scheduler.prev_task != entry->id)
             {
-                scheduler.prev_task = *entry->id;
+                scheduler.prev_task = entry->id;
                 scheduler.start_time = scheduler.timer_cb();
                 scheduler.tx_cb(entry->pkt.buf, entry->pkt.byte_count);  // Run the serial tx routine
             }
@@ -185,7 +194,7 @@ void send_task(void)
 //Modify a task value
 void send_task_val(uint8_t task_id, uint8_t task_type, uint8_t value_id, void * value, size_t size)
 {
-    uint8_t var[size + 1];
+    static uint8_t var[sizeof(MAX_SEND_TYPE)];
 
     var[0] = value_id;
     memcpy(var + 1, value, size);

@@ -31,10 +31,10 @@ fsm_t create_fsm(uint8_t state_cnt, state_t ** states)
 {
     fsm_t fsm;
 
+    fsm.curr_state = NULL;
     fsm.state_cnt = state_cnt;
-    fsm.curr_state = INVALID_STATE;
 
-    if (states == NULL)
+    if (states == NULL)  // Allocate memory if no states were passed
     {
         fsm.states = malloc(sizeof(state_t *) * state_cnt);
 
@@ -63,14 +63,12 @@ fsm_t create_fsm(uint8_t state_cnt, state_t ** states)
 */
 void run_fsm(fsm_t * fsm, void * args)
 {
-    if (fsm->curr_state != INVALID_STATE)
+    if (fsm->curr_state != NULL)
     {
-        state_t * curr_state = fsm->states[fsm->curr_state];
-
-        curr_state->run(args);  // Run current state
+        fsm->curr_state->run(args);  // Run current state
 
         // Get the state to be ran in next iteration
-        uint8_t id;
-        fsm->curr_state = ((id = curr_state->change(args)) < fsm->state_cnt)? id: INVALID_STATE;
+        uint8_t id = fsm->curr_state->change(args);
+        fsm->curr_state = (id < fsm->state_cnt)? fsm->states[id]: NULL;
     }
 }

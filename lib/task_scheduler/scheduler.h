@@ -13,7 +13,17 @@ extern "C" {
 #endif
 
 
-/* Public scheduler constants */
+/* Modifiable Public scheduler constants */
+
+#define MAX_SEND_TYPE double  // Biggest C primitive data type the MODIFY_TASK_VAL command can send
+
+// Task time range for the other system to reply
+
+#define SHORT_TIMER 350  // Allowed time for the first reply time range
+#define LONG_TIMER  500  // Allowed time for the second reply time range
+
+
+/* Immutable Public scheduler constants */
 
 // Offsets
 
@@ -24,11 +34,6 @@ extern "C" {
 #define INTERNAL_TASK 0
 #define EXTERNAL_TASK 1
 
-// Task time range for the other system to reply
-
-#define SHORT_TIMER 350  // Allowed time for the first reply time range
-#define LONG_TIMER  500  // Allowed time for the second reply time range
-
 // Internal command ids
 
 #define ALERT_SYSTEM    0
@@ -36,7 +41,7 @@ extern "C" {
 #define UNSCHEDULE_TASK 2
 #define MODIFY_TASK_VAL 3
 
-// Internal pseudo-command ids (these are for sending messages)
+// Pseudo-commands for the schedu
 
 #define PKT_DECODE    0
 #define PKT_ENCODE    1

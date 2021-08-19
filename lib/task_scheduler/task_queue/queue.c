@@ -63,7 +63,7 @@ handle_queue_deinit:
             free(queues);
 
         case FAILED_SCHEDULING_QUEUES:
-            return NULL;;
+            return NULL;
     }    
 }
 

@@ -101,7 +101,7 @@ static void moving_run(void * args)
         {
             car->attrs.next_floor = find_next_floor(car);
             car->attrs.move = STOP;  
-            car->attrs.pressed_floors[car->state.floor - 1] = false;
+            exit_elevator(car);  // Get people out of the eleator
         }
         car->attrs.action_started = END;
     }
@@ -145,17 +145,16 @@ static void idle_run(void * args)
         car->attrs.init_time = millis();
     }
 
-    // Close doors after 4 seconds of being idle
-    else if (car->state.is_door_open && (millis() - car->attrs.init_time > CLOSE_DOOR_TIME))
+    // Verify timed events (closing door and turning lights off)
+    else if (car->state.is_door_open || car->state.is_light_on)
     {
-        car->state.is_door_open = CLOSE_DOOR;
-    }
+        bool event_timer_passed = (car->state.is_door_open)? millis() - car->attrs.init_time > CLOSE_DOOR_TIME: millis() - car->attrs.init_time > LIGHTS_OFF_TIME;
     
-    // Turn lights off after 10 seconds of being idle
-    else if (car->state.is_light_on && (millis() - car->attrs.init_time > LIGHTS_OFF_TIME))
-    {
-        car->state.is_light_on = LIGHTS_ON;
-    }
+        if (event_timer_passed) // Toggle states if enough time passed
+        {
+            (car->state.is_door_open)? !car->state.is_door_open: !car->state.is_light_on;
+        } 
+    }        
 }
 
 

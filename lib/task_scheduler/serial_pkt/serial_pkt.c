@@ -49,7 +49,6 @@ void deinit_serial_pkt(serial_pkt_t * pkt)
 
 
 // Decode and check for packet validity
-// TODO: Change name to process_incoming_pkt
 task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
 {
     static uint8_t out_buf[PKT_BUF_SIZE];

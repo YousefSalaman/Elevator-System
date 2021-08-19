@@ -67,7 +67,7 @@ task_entry_t * lookup_task(task_table_t table, uint8_t id)
 }
 
 
-/** Add a task to the task table
+/**Add a task to the task table
  * 
  * NOTE: If payload size is set to a non-positive integer, the code will
  * disable packet size checking this task (i.e., payload size is set to
@@ -93,7 +93,7 @@ void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, 
             entry->size = NULL;
             if (payload_size > 0)
             {
-                memcpy(entry->size, &(uint8_t){payload_size}, sizeof(uint8_t *));
+                memcpy(entry->size, &(uint8_t){payload_size}, sizeof(uint8_t));
             }
         }
     }
