@@ -48,6 +48,10 @@ static void emergency_run(void * args)
         car->state.is_door_open = OPEN_DOOR;
         car->state.is_light_on = LIGHTS_ON;
         car->attrs.action_started = START;
+
+        // Send updated states to manager
+        update_elevator_door_status(car);
+        update_elevator_light_status(car);
     }
 }
 
@@ -102,6 +106,8 @@ static void moving_run(void * args)
             car->attrs.next_floor = find_next_floor(car);
             car->attrs.move = STOP;  
             exit_elevator(car);  // Get people out of the eleator
+
+            update_elevator_movement_state(car);
         }
         car->attrs.action_started = END;
     }
@@ -143,6 +149,10 @@ static void idle_run(void * args)
         car->state.is_light_on = LIGHTS_ON;
         car->attrs.action_started = START;
         car->attrs.init_time = millis();
+
+        // Send updated states to manager
+        update_elevator_door_status(car);
+        update_elevator_light_status(car);
     }
 
     // Verify timed events (closing door and turning lights off)
@@ -150,9 +160,19 @@ static void idle_run(void * args)
     {
         bool event_timer_passed = (car->state.is_door_open)? millis() - car->attrs.init_time > CLOSE_DOOR_TIME: millis() - car->attrs.init_time > LIGHTS_OFF_TIME;
     
-        if (event_timer_passed) // Toggle states if enough time passed
+        // Toggle states after enough time passed
+        if (event_timer_passed)
         {
-            (car->state.is_door_open)? !car->state.is_door_open: !car->state.is_light_on;
+            if (car->state.is_door_open)
+            {
+                car->state.is_door_open = CLOSE_DOOR;
+                update_elevator_door_status(car);
+            }
+            else
+            {
+                car->state.is_light_on = LIGHTS_OFF;
+                update_elevator_light_status(car);
+            }
         } 
     }        
 }

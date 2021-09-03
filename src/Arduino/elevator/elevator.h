@@ -20,17 +20,53 @@ extern "C" {
 
 #define ELEVATOR_STATE_CNT 4
 
+// Elevator attributes that can be updated in the manager
 
-/**Elevator task IDs
- * 
- * 
- * 
- * 
-*/
-enum 
+enum updatable_attrs
 {
+    UPDATE_CAPACITY,
+    UPDATE_TEMPERATURE,
+    UPDATE_FLOOR,
+    UPDATE_WEIGHT,
+    UPDATE_DOOR_STATUS,
+    UPDATE_LIGHT_STATUS,
+    UPDATE_MOVEMENT_STATE,
+    UPDATE_MAINTENANCE_STATUS,
+};
+
+
+
+// Elevator task IDs
+enum elevator_task_ids
+{
+/**Elevator object tasks
+ * 
+ * These tasks will be scheduled in the Arduino for the
+ * elevator manager to perform.
+*/
+
     ALERT_PERSON_ADDITION,
-    UPDATE_CAR_CAPACITY_STATUS,
+    UPDATE_ELEVATOR_ATTRIBUTE,
+
+/**Elevator Manager tasks
+ * 
+ * These tasks will be triggered by the elevator management
+ * system on the computer side.
+ */
+
+    // Elevator management tasks
+
+    ENTER_ELEVATOR,
+    REQUEST_ELEVATOR,
+
+    // Elevator mutator tasks
+
+    SET_FLOOR,
+    SET_WEIGHT,
+    SET_DOOR_STATUS,
+    SET_TEMPERATURE,
+    SET_LIGHT_STATUS,
+    SET_MAINTANENCE_STATE,
 };
 
 /**Movement types
@@ -118,7 +154,7 @@ typedef struct
 {
     uint8_t temp;          // Current temperature
     uint8_t floor;         // Current floor
-    uint8_t weight;       // Current weight
+    uint8_t weight;        // Current weight
     uint8_t is_light_on;   // Current light state
     uint8_t is_door_open;  // Current door state
 
@@ -128,10 +164,10 @@ typedef struct
 // Limits of the elevator
 typedef struct
 {
-    const uint8_t floor;     // Maximum floor the elevator can reach
-    const uint8_t h_temp;    // Maximum temperature the cab can reach
-    const uint8_t l_temp;    // Minimum temperature the cab can reach
-    const uint8_t weight;   // Maximum weight the elevator can handle
+    uint8_t floor;     // Maximum floor the elevator can reach
+    uint8_t h_temp;    // Maximum temperature the cab can reach
+    uint8_t l_temp;    // Minimum temperature the cab can reach
+    uint16_t weight;   // Maximum weight the elevator can handle
 
 } car_limits_t;
 
@@ -208,7 +244,7 @@ extern state_t * elevator_states[];
 
 
 // Shorthand for running an elevator's state machine
-#define run_elevator(car) car->behavior.run_FSM(&car->behavior, car)
+#define run_elevator(car) run_fsm(&(car)->behavior, (car))
 
 
 // Shorthand for verifying if elevator is currently performing an action
@@ -222,23 +258,35 @@ extern state_t * elevator_states[];
 #define elevator_within_limits(car) (car->state.weight < car->limits.weight) && (car->limits.l_temp < car->state.temp) && (car->state.temp < car->limits.h_temp)
 
 
-uint8_t * get_temp(elevator_t * car);
-uint8_t * get_floor(elevator_t * car);
-uint8_t * get_weight(elevator_t * car);
-uint8_t * get_door_state(elevator_t * car);
-uint8_t * get_light_state(elevator_t * car);
+// Update elevator object attributes in manager
+// TODO: Add elevator index or something to identify it 
+#define update_elevator_attr(type, value) schedule_normal_task(UPDATE_ELEVATOR_ATTRIBUTE, ((uint8_t []){type, value}), 1)
+
+#define update_elevator_capacity(car)           update_elevator_attr(UPDATE_CAPACITY, (car)->attrs.riders != NULL)
+#define update_elevator_temp(car)               update_elevator_attr(UPDATE_TEMPERATURE, (car)->state.temp)
+#define update_elevator_floor(car)              update_elevator_attr(UPDATE_FLOOR, (car)->state.floor)
+#define update_elevator_weight(car)             update_elevator_attr(UPDATE_WEIGHT, (car)->state.weight)
+#define update_elevator_door_status(car)        update_elevator_attr(UPDATE_DOOR_STATUS, (car)->state.is_door_open)
+#define update_elevator_light_status(car)       update_elevator_attr(UPDATE_LIGHT_STATUS, (car)->state.is_light_on)
+#define update_elevator_maintenance_status(car) update_elevator_attr(UPDATE_MAINTENANCE_STATUS, (car)->attrs.maintenance_needed)
+#define update_elevator_movement_state(car)     update_elevator_attr(UPDATE_MOVEMENT_STATE, (car)->attrs.move)
+
+
 
 void set_floor(elevator_t * car, uint8_t * floor);
 void set_weight(elevator_t * car, uint8_t * weight);
 void set_door_state(elevator_t * car, uint8_t * state);
 void set_temperature(elevator_t * car, uint8_t * temp);
 void set_light_state(elevator_t * car, uint8_t * state);
+void set_maintanence_state(elevator_t * car, uint8_t * status);
+
 
 void exit_elevator(elevator_t * car);
 void move_elevator(elevator_t * car);
 void deinit_elevator(elevator_t * car);
 uint8_t find_next_floor(elevator_t * car);
 void enter_elevator(elevator_t * car, uint8_t * attrs);
+void request_elevator(elevator_t * car, uint8_t * p_floor);
 elevator_t init_elevator(uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight);
 
 

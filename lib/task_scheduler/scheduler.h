@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #endif
 
+#include "task_table/table.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,7 +74,10 @@ void init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb
 void send_task(void);
 void perform_task(void);
 bool store_task_rx_byte(uint8_t byte);
-void register_task(uint8_t id, int payload_size, void * task);
+
+void register_task_private(uint8_t id, int payload_size, task_t task);
+
+#define register_task(id, payload_size, task) register_task_private((id), (payload_size), (task_t) (task))
 
 // Task scheduling methods
 

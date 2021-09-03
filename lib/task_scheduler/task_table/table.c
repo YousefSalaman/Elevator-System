@@ -73,7 +73,7 @@ task_entry_t * lookup_task(task_table_t table, uint8_t id)
  * disable packet size checking this task (i.e., payload size is set to
  * NULL.)
  */
-void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, void * task) 
+void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, task_t task) 
 {
     if (lookup_task(*table, id) == NULL)
     {

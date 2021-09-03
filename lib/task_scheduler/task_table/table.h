@@ -8,6 +8,9 @@ extern "C" {
 #endif
 
 
+// Generic task type
+typedef void (*task_t)(void);
+
 /**Task entry object
  * 
  * An object that represents an entry in the task lookup
@@ -17,7 +20,7 @@ extern "C" {
 typedef struct entry
 {
     uint8_t id;
-    void * task;
+    task_t task;
     uint8_t * size;
     struct entry * next;
 
@@ -45,7 +48,7 @@ typedef struct
 void deinit_task_table(task_table_t table);
 task_table_t init_task_table(uint16_t size);
 task_entry_t * lookup_task(task_table_t table, uint8_t id);
-void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, void * task);
+void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, task_t task);
 
 
 #ifdef __cplusplus

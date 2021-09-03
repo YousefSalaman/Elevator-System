@@ -68,7 +68,7 @@ void deinit_task_scheduler(void)
 
 
 // Register a task in the scheduler
-void register_task(uint8_t id, int payload_size, void * task)
+void register_task_private(uint8_t id, int payload_size, task_t task)
 {
     register_task_in_table(&scheduler.table, id, payload_size, task);
 }

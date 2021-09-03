@@ -6,12 +6,6 @@
 
 /* Private elevator constants */
 
-// Elevator capacity states
-
-#define FULL_CAP    0
-#define PARTIAL_CAP 1
-
-
 /* Elevator function prototypes*/
 
 static uint8_t find_requested_floors(elevator_t * car);
@@ -19,13 +13,6 @@ static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacit
 
 
 /* Public system elevator functions */
-
-
-/**System elevator functions
- * 
- * These functions are meant to be used by the elevator manager to
- * administer the elevator objects.
-*/
 
 // Constructor for an elevator object
 elevator_t init_elevator(uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight)
@@ -73,6 +60,14 @@ void deinit_elevator(elevator_t * car)
 }
 
 
+/**Manager elevator functions
+ * 
+ * These functions are meant to be used by the elevator manager to
+ * administer the elevator objects or by other parts of the Arduino
+ * code to perform state-specific actions.
+*/
+
+
 /**A person enters an elevator
  * 
  * In here, the information related to a specific person entering the
@@ -97,12 +92,12 @@ void deinit_elevator(elevator_t * car)
 */
 void enter_elevator(elevator_t * car, uint8_t * attrs)
 {
-    uint8_t floor = car->state.floor;
-
-    if (floor && floor < car->limits.floor)
+    if (car->state.floor && car->state.floor <= car->limits.floor)
     {
         uint8_t temp = attrs[0];
         uint8_t weight = attrs[1];
+
+        uint8_t floor = car->state.floor - 1;
 
         if (front_rider_is_not_empty(car, floor))  // If rider is not a placeholder to indicate this floor was requested
         {
@@ -119,11 +114,10 @@ void enter_elevator(elevator_t * car, uint8_t * attrs)
         car->state.temp += temp;
         car->state.weight += weight;
 
-        // Full capacity has been reached, so alert the elevator manager
-        if (car->attrs.riders == NULL)
-        {
-            schedule_normal_task(UPDATE_CAR_CAPACITY_STATUS, (uint8_t []){FULL_CAP}, 1);
-        }
+        // Send new states to manager
+        update_elevator_temp(car);
+        update_elevator_weight(car);
+        update_elevator_capacity(car);
     }
 }
 
@@ -165,11 +159,10 @@ void exit_elevator(elevator_t * car)
         move_to_front(&car->attrs.riders, &car->attrs.pressed_floors[floor]);
     }
 
-    // Tell the elevator manager this elevator is available in terms of capacity
-    if (car->attrs.riders != NULL)
-    {
-        schedule_normal_task(UPDATE_CAR_CAPACITY_STATUS, (uint8_t []){PARTIAL_CAP}, 1);
-    }
+    // Send updated states to manager
+    update_elevator_temp(car);
+    update_elevator_weight(car);
+    update_elevator_capacity(car);
 }
 
 
@@ -190,6 +183,8 @@ void move_elevator(elevator_t * car)
     {
         car->state.floor--;
     }
+
+    update_elevator_floor(car);
 }
 
 
@@ -223,32 +218,93 @@ uint8_t find_next_floor(elevator_t * car)
  * placed into that floor it was requested to later find this
  * requested floor.
 */ 
-void request_floor(elevator_t * car, uint8_t * floor)
+void request_elevator(elevator_t * car, uint8_t * p_floor)
 {
-    if (*floor && *floor <= car->limits.floor)
+    if (*p_floor && *p_floor <= car->limits.floor)
     {
+        uint8_t floor = *p_floor - 1;
+
         // Assign an empty rider if one hasn't been placed already on requested floor
-        if (car->attrs.pressed_floors[*floor - 1] == NULL)
+        if (car->attrs.pressed_floors[floor] == NULL)
         {
-            person_t * rider = &car->attrs.riders->item;
+            person_t * rider = car->attrs.riders->item;
 
             rider->weight = 0; 
 
-            move_to_front(&car->attrs.pressed_floors[*floor - 1], &car->attrs.riders);
+            move_to_front(&car->attrs.pressed_floors[floor], &car->attrs.riders);
         }
 
         // If no floor is currently requested, then assign the requested
         // floor as the next floor the elevator should go to
         if (!car->attrs.next_floor)
         {
-            car->attrs.next_floor = *floor;
+            car->attrs.next_floor = *p_floor;
+            car->attrs.move = (car->state.floor > car->attrs.next_floor)? DOWN: UP;
+            update_elevator_movement_state(car);
         }
     }
 }
 
 
-/* Private system elevator functions */
+/**Elevator object functions
+ * 
+ * These functions are meant to directly control the states of 
+ * the elevator functions and will most likely be called through
+ * another device connected to the Arduino.
+*/
 
+// Set the light on the elevator to a specific state
+void set_light_state(elevator_t * car, uint8_t * state)
+{
+    car->state.is_light_on = (*state > 0);
+    update_elevator_light_status(car);
+}
+
+
+// Set the door of the elevator to a specific state
+void set_door_state(elevator_t * car, uint8_t * state)
+{
+    car->state.is_door_open = (*state > 0);
+    update_elevator_door_status(car);
+}
+
+
+// Set the elevator to a specfic floor
+void set_floor(elevator_t * car, uint8_t * floor)
+{
+    if (*floor && *floor <= car->limits.floor)
+    {
+        car->state.floor = *floor;
+        update_elevator_floor(car);
+    }
+}
+
+
+// Set the elevator's car to a specific temperature
+void set_temperature(elevator_t * car, uint8_t * temp)
+{
+    car->state.temp = *temp;
+    update_elevator_temp(car);
+}
+
+
+// Set the load in the elevator to a specific weight
+void set_weight(elevator_t * car, uint8_t * weight)
+{
+    car->state.weight = *weight;
+    update_elevator_weight(car);
+}
+
+
+// Set the elevator's car to a specific temperature
+void set_maintanence_state(elevator_t * car, uint8_t * status)
+{
+    car->attrs.maintenance_needed = *status;
+    update_elevator_maintenance_status(car);
+}
+
+
+/* Private elevator functions */
 
 // Initialize miscellaneous attributes for the elevator object
 static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacity)
@@ -257,7 +313,6 @@ static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacit
     {
         .move = STOP,
         .init_time = 0,
-        .riders = NULL,
         .pressed_floors = NULL,
         .next_floor = NULL_FLOOR,
         .action_started = false,
@@ -307,7 +362,7 @@ static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacit
 
 handle_null_elevator:
     
-    free(car_attrs.riders);
+    free(car_attrs.person_pool);
     free(car_attrs.pressed_floors);
 
     return car_attrs;
@@ -321,7 +376,7 @@ static uint8_t find_requested_floors(elevator_t * car)
     {
         case UP:  // Verify the upper floors for any requests
     
-            for (uint8_t floor = car->state.floor; floor < car->limits.floor; floor++)
+            for (uint8_t floor = car->state.floor; floor <= car->limits.floor; floor++)
             {
                 if (car->attrs.pressed_floors[floor - 1] != NULL)
                 {
@@ -345,83 +400,4 @@ static uint8_t find_requested_floors(elevator_t * car)
     }
 
     return NULL_FLOOR;  // Otherwise, no requests were found for the current direction
-}
-
-
-/**Direct elevator functions
- * 
- * These functions are meant to be called only through another device
- * connected to the Arduino. In other words, these functions will be
- * saved in the elevator command table.
-*/
-
-// Get the light state for an elevator
-uint8_t * get_light_state(elevator_t * car)
-{
-    return &car->state.is_light_on;
-}
-
-
-// Get the door state for an elevator
-uint8_t * get_door_state(elevator_t * car)
-{
-    return &car->state.is_door_open;
-}
-
-
-// Get which floor the elevator is currently on
-uint8_t * get_floor(elevator_t * car)
-{
-    return &car->state.floor;
-}
-
-
-// Get the temperature in elevator's car
-uint8_t * get_temp(elevator_t * car)
-{
-    return &car->state.temp;
-}
-
-
-// Get the weight of the load in the elevator's car
-uint8_t * get_weight(elevator_t * car)
-{
-    return &car->state.weight;
-}
-
-
-// Set the light on the elevator to a specific state
-void set_light_state(elevator_t * car, uint8_t * state)
-{
-    car->state.is_light_on = (*state > 0);
-}
-
-
-// Set the door of the elevator to a specific state
-void set_door_state(elevator_t * car, uint8_t * state)
-{
-    car->state.is_door_open = (*state > 0);
-}
-
-
-// Set the elevator to a specfic floor
-void set_floor(elevator_t * car, uint8_t * floor)
-{
-    if (*floor && *floor <= car->limits.floor){
-        car->state.floor = *floor;
-    }
-}
-
-
-// Set the elevator's car to a specific temperature
-void set_temperature(elevator_t * car, uint8_t * temp)
-{
-    car->state.temp = *temp;
-}
-
-
-// Set the load in the elevator to a specific weight
-void set_weight(elevator_t * car, uint8_t * weight)
-{
-    car->state.weight = *weight;
 }
