@@ -45,16 +45,35 @@ static void process_current_task(void);
 /* Public scheduler functions */
 
 // Initialize task scheduler
-void init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb)
+bool init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb)
 {
     scheduler.prev_task = NULL;
 
     scheduler.rx_cb = rx_cb;
     scheduler.tx_cb = tx_cb;
     scheduler.timer_cb = timer_cb;
+
     scheduler.table = init_task_table(table_size);
     scheduler.rx_pkt = init_serial_pkt(PKT_BUF_SIZE);
     scheduler.queues = init_scheduling_queues(queue_size, PKT_BUF_SIZE);
+
+    // If everything initialized correctly, then return true
+    if (scheduler.table.entries && scheduler.rx_pkt.buf && scheduler.queues)
+    {
+        return true;
+    };
+
+    /** Uninitialize everything if something was not initialized correctly
+     * 
+     * NOTE: The queues uninitialize themselves if anything was not 
+     * initialized correctly, so there's no need to deallocate the queues
+     * from here.
+     */
+    
+    deinit_task_table(scheduler.table);
+    deinit_serial_pkt(&scheduler.rx_pkt);
+
+    return false;
 }
 
 
@@ -93,6 +112,7 @@ void schedule_task(uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bo
             {
                 prioritize_task();
             }
+
             send_task();
         }
 
@@ -105,6 +125,7 @@ void schedule_task(uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bo
         {
             push_task(scheduler.queues, id, type, pkt, pkt_size, is_priority);
         }
+
         send_task();
     }
 }

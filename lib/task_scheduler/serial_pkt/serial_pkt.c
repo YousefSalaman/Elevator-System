@@ -41,10 +41,7 @@ serial_pkt_t init_serial_pkt(uint8_t pkt_size)
 // Unitialize a packet
 void deinit_serial_pkt(serial_pkt_t * pkt)
 {
-    if (pkt->buf != NULL)
-    {
-        free(pkt->buf);
-    }
+    free(pkt->buf);
 }
 
 

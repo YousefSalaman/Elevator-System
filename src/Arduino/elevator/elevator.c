@@ -14,40 +14,61 @@ static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacit
 
 /* Public system elevator functions */
 
-// Constructor for an elevator object
-elevator_t init_elevator(uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight)
+// Set up attributes for elevator object
+void set_elevator_attrs(uint8_t car_index, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight)
 {
-    // Limits for the elevator's car
-    car_limits_t car_limits = 
+    elevator_t * car_p = get_elevator(car_index);
+
+    if (car_p != NULL)
     {
-        .floor = floor_count,
-        .h_temp = max_temp,
-        .l_temp = min_temp,
-        .weight = weight
-    };
+        // Limits for the elevator's car
+        car_limits_t car_limits = 
+        {
+            .floor = floor_count,
+            .h_temp = max_temp,
+            .l_temp = min_temp,
+            .weight = weight
+        };
 
-    // Set the elevator's initial state
-    car_state_t car_state = 
-    {
-        .temp = ROOM_TEMPERATURE, 
-        .floor = NULL_FLOOR, 
-        .weight = ZERO_WEIGHT, 
-        .is_light_on = LIGHTS_ON,
-        .is_door_open =  CLOSE_DOOR
-    };
+        // Set the elevator's initial state
+        car_state_t car_state = 
+        {
+            .temp = ROOM_TEMPERATURE, 
+            .floor = NULL_FLOOR, 
+            .weight = ZERO_WEIGHT, 
+            .is_light_on = LIGHTS_ON,
+            .is_door_open =  CLOSE_DOOR
+        };
 
-    // Set up elevator object
-    elevator_t car = 
-    {
-        .attrs = init_misc_elevator_attrs(floor_count, capacity),
-        .state = car_state,
-        .behavior = create_fsm(ELEVATOR_STATE_CNT, elevator_states),
-        .limits = car_limits
-    };
+        // Set up elevator object
+        elevator_t car = 
+        {
+            .attrs = init_misc_elevator_attrs(floor_count, capacity),
+            .state = car_state,
+            .behavior = create_fsm(ELEVATOR_STATE_CNT, elevator_states),
+            .limits = car_limits
+        };
 
-    car.behavior.curr_state = IDLE;  // Start with the idle state (Change to init later)
+        car.behavior.curr_state = elevator_states[START];  // Start with the idle state (Change to init later)
 
-    return car;
+        // Send initialized data to the computer as priority tasks
+        // The update_attr methods schedule a normal task instead of a priority one, so
+        // That's why this is done manually here
+        uint8_t * weight_p = (uint8_t *) &weight;
+
+        /* TODO: Add an option to the update functions to send them as a normal or priority task 
+        You can do this by using schedule_task directly instead of schedule_normal_task */
+        // schedule_priority_task(UPDATE_FLOOR, ((uint8_t []){car_index, UPDATE_FLOOR, car.state.floor}), 3);
+        // schedule_priority_task(UPDATE_TEMPERATURE, ((uint8_t []){car_index, UPDATE_TEMPERATURE, car.state.temp}), 3);
+        // schedule_priority_task(UPDATE_DOOR_STATUS, ((uint8_t []){car_index, car.state.is_door_open}), 2);
+        // schedule_priority_task(UPDATE_LIGHT_STATUS, ((uint8_t []){car_index, car.state.is_light_on}), 2);
+        // schedule_priority_task(UPDATE_WEIGHT, ((uint8_t []){car_index, weight_p[0], weight_p[1]}), 3);
+        // schedule_priority_task(UPDATE_CAPACITY, ((uint8_t []){car_index, car.attrs.riders != NULL}), 2);
+        // schedule_priority_task(UPDATE_TEMPERATURE, ((uint8_t []){car_index, car.state.temp}), 2);
+        // schedule_priority_task(UPDATE_MOVEMENT_STATE, ((uint8_t []){car_index, car.attrs.move}), 2);
+        
+        memcpy(car_p, &car, sizeof(elevator_t));
+    }
 }
 
 
@@ -253,25 +274,38 @@ void request_elevator(elevator_t * car, uint8_t * p_floor)
  * another device connected to the Arduino.
 */
 
-// Set the light on the elevator to a specific state
-void set_light_state(elevator_t * car, uint8_t * state)
+// Alert the elevator that it has been initialized in computer
+void alert_elevator_init(uint8_t car_index, uint8_t * _)
 {
+    (get_elevator(car_index))->attrs.is_init = true;
+}
+
+
+// Set the light on the elevator to a specific state
+void set_light_state(uint8_t car_index, uint8_t * state)
+{
+    elevator_t * car = get_elevator(car_index);
+
     car->state.is_light_on = (*state > 0);
     update_elevator_light_status(car);
 }
 
 
 // Set the door of the elevator to a specific state
-void set_door_state(elevator_t * car, uint8_t * state)
+void set_door_state(uint8_t car_index, uint8_t * state)
 {
+    elevator_t * car = get_elevator(car_index);
+
     car->state.is_door_open = (*state > 0);
     update_elevator_door_status(car);
 }
 
 
 // Set the elevator to a specfic floor
-void set_floor(elevator_t * car, uint8_t * floor)
+void set_floor(uint8_t car_index, uint8_t * floor)
 {
+    elevator_t * car = get_elevator(car_index);
+
     if (*floor && *floor <= car->limits.floor)
     {
         car->state.floor = *floor;
@@ -281,24 +315,30 @@ void set_floor(elevator_t * car, uint8_t * floor)
 
 
 // Set the elevator's car to a specific temperature
-void set_temperature(elevator_t * car, uint8_t * temp)
+void set_temperature(uint8_t car_index, uint8_t * temp)
 {
+    elevator_t * car = get_elevator(car_index);
+
     car->state.temp = *temp;
     update_elevator_temp(car);
 }
 
 
 // Set the load in the elevator to a specific weight
-void set_weight(elevator_t * car, uint8_t * weight)
+void set_weight(uint8_t car_index, uint8_t * weight)
 {
+    elevator_t * car = get_elevator(car_index);
+
     car->state.weight = *weight;
     update_elevator_weight(car);
 }
 
 
 // Set the elevator's car to a specific temperature
-void set_maintanence_state(elevator_t * car, uint8_t * status)
+void set_maintanence_state(uint8_t car_index, uint8_t * status)
 {
+    elevator_t * car = get_elevator(car_index);
+
     car->attrs.maintenance_needed = *status;
     update_elevator_maintenance_status(car);
 }
@@ -313,6 +353,7 @@ static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacit
     {
         .move = STOP,
         .init_time = 0,
+        .is_init = false,
         .pressed_floors = NULL,
         .next_floor = NULL_FLOOR,
         .action_started = false,

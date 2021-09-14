@@ -63,13 +63,13 @@ typedef void (*tx_schedule_cb)(uint8_t * pkt, uint8_t pkt_size);
  * task function, task id, and its associated payload. The callback must
  * define a way to run the task with the given information.
 */
-typedef uint8_t (*rx_schedule_cb)(uint8_t task_id, void * task, uint8_t * pkt);
+typedef uint8_t (*rx_schedule_cb)(uint8_t task_id, task_t task, uint8_t * pkt);
 
 
 /* Scheduler functions */
 
 void deinit_task_scheduler(void);
-void init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb);
+bool init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb);
 
 void send_task(void);
 void perform_task(void);

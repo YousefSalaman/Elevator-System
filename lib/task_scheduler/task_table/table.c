@@ -39,16 +39,21 @@ void deinit_task_table(task_table_t table)
     task_entry_t * entry;
     task_entry_t * temp_entry;
 
-    for (int i = 0; i < table.size; i++)
+    // Free up registered entries in table
+    if (table.entries != NULL)
     {
-        // Free up elements in the linked list for a given slot in the table
-        for (entry = table.entries[i]; entry != NULL; entry = temp_entry)
+        for (int i = 0; i < table.size; i++)
         {
-            temp_entry = entry->next;
-            free(entry);
+            // Free up elements in the linked list for a given slot in the table
+            for (entry = table.entries[i]; entry != NULL; entry = temp_entry)
+            {
+                temp_entry = entry->next;
+                free(entry);
+            }
         }
-        free(entry);  // Free up the original head
     }
+
+    free(table.entries);  // Free up entry array 
 }
 
 
@@ -75,6 +80,7 @@ task_entry_t * lookup_task(task_table_t table, uint8_t id)
  */
 void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, task_t task) 
 {
+    // Add task to table if one was not added with the same id
     if (lookup_task(*table, id) == NULL)
     {
         uint8_t hash_value = hash(*table, id);

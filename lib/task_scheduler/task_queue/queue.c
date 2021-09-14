@@ -61,10 +61,9 @@ handle_queue_deinit:
         
         case FAILED_MEMORY_POOL:
             free(queues);
-
-        case FAILED_SCHEDULING_QUEUES:
-            return NULL;
     }    
+
+    return NULL;
 }
 
 
@@ -184,9 +183,46 @@ bool in_queue(schedule_queues_t * queues, uint8_t id)
 // Initialize entries in the scheduling memory pool
 static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, uint8_t pkt_size)
 {
-    int i;
+    int i = 0;
 
     // Create entries with packets
+
+    queue_entry_t * schedule_item_pool = malloc(sizeof(queue_entry_t) * queue_size);
+
+    if (schedule_item_pool != NULL)
+    {
+        for (i = 0; i < queue_size; i++)
+        {
+            queue_entry_t * entry = &schedule_item_pool[i];
+
+            queues->schedule_pool[i].item = entry;
+
+            // Initialize entry attributes
+            entry->rescheduled = false;
+            entry->pkt = init_serial_pkt(pkt_size);
+
+            // If buffers where not initialized correctly
+            if (entry->pkt.buf == NULL)
+            {
+                break;
+            }
+            
+        }
+    }
+
+    // Unitialize entries if no more space is left
+    if (i != (int) queue_size)
+    {
+        for (; i < 0; i--)
+        {
+            queue_entry_t * entry = queues->schedule_pool[i].item;
+            deinit_serial_pkt(&entry->pkt);
+        }
+
+        free(schedule_item_pool);
+    }
+
+
     for (i = 0; i < queue_size; i++)
     {
         queue_entry_t * entry = malloc(sizeof(queue_entry_t));
@@ -217,10 +253,7 @@ static bool init_queue_entries(schedule_queues_t * queues, uint8_t queue_size, u
             queue_entry_t * entry = queues->schedule_pool[i].item;
         
             deinit_serial_pkt(&entry->pkt);
-            if (entry != NULL)
-            {
-                free(entry);
-            }
+            free(entry);
         }
     }
 

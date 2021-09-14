@@ -1,37 +1,40 @@
 #include <Arduino.h>
-
 #include <scheduler.h>
+
 #include "elevator/elevator.h"
 
 
-// Constants
+/* Constants */
 
-#define QUEUE_SIZE 5
-#define TABLE_SIZE 23
+#define ELEVATOR_COUNT 2       // The amount of elevators present in this device
 
-#define ELEVATOR_COUNT 2
+#define INVALID_CAR_INDEX 255  // Return code for serial rx callbacks that signifies a wrong elevator car index was given
 
-// Variables
+// Offsets for payload processing in serial callback
 
-static elevator_t elevators[ELEVATOR_COUNT];  // Elevators for this Arduino
+#define CAR_INDEX_OFFSET 0  // Offset for the index of the car
+#define PAYLOAD_OFFSET   1  // Offset for the payload data
 
 
-// Function prototypes
+/* Function prototypes */
 
-void receive_serial_pkt(void);
-void serial_tx_cb(uint8_t * pkt, uint8_t pkt_size);
+static void receive_serial_pkt(void);
+static void serial_tx_cb(uint8_t * pkt, uint8_t pkt_size);
+static uint8_t serial_rx_cb(uint8_t id, task_t task, uint8_t * pkt);
 
 
 void setup() 
 {
-    // Set serial port
+    // Initialize serial channel
     Serial.begin(9600);
 
-    // Initialize task scheduler
+    // Initialize elevator subsystem
+    init_elevator_subsystem(ELEVATOR_COUNT, serial_rx_cb, serial_tx_cb, millis);
 
-    init_task_scheduler(QUEUE_SIZE, TABLE_SIZE, NULL, serial_tx_cb, millis);
+    // Set elevator attributes
+    
 
-    // Register tasks
+    // Register elevator tasks
     register_task(ENTER_ELEVATOR, 3, enter_elevator);
     register_task(REQUEST_ELEVATOR, 2, request_elevator);
     register_task(SET_FLOOR, 2, set_floor);
@@ -46,17 +49,12 @@ void loop()
 {
     send_task();
     receive_serial_pkt();
-
-    // Run elevators
-    for (uint8_t i = 0; i < ELEVATOR_COUNT; i++)
-    {
-        run_elevator(&elevators[i]);
-    }
+    run_elevators();
 }
 
 
 // Read from serial port
-void receive_serial_pkt(void)
+static void receive_serial_pkt(void)
 {
     int byte;  
     
@@ -71,14 +69,30 @@ void receive_serial_pkt(void)
 }
 
 
-// Send data to serial port
-void serial_tx_cb(uint8_t * pkt, uint8_t pkt_size)
+/* Elevator group private functions */
+
+// Callback for interpreting and running a task
+static uint8_t serial_rx_cb(uint8_t id, task_t task, uint8_t * pkt)
+{
+    uint8_t car_index = pkt[CAR_INDEX_OFFSET];
+
+    if (car_index < ELEVATOR_COUNT)
+    {
+        return ((elevator_task_t) task)(car_index, &pkt[PAYLOAD_OFFSET]);
+    }
+
+    return INVALID_CAR_INDEX;
+}
+
+
+// Callback for serial communication
+static void serial_tx_cb(uint8_t * pkt, uint8_t pkt_size)
 {
     size_t bytes_to_send = pkt_size;
 
     while (bytes_to_send)
     {
-        bytes_to_send -= Serial.write(pkt, pkt_size);
+        bytes_to_send -= Serial.write(&pkt[pkt_size - bytes_to_send], bytes_to_send);
 
         // Arithmetic overflow due to sending more bytes than expected
         if (bytes_to_send > pkt_size)
