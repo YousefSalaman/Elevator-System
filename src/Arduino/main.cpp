@@ -6,7 +6,18 @@
 
 /* Constants */
 
-#define ELEVATOR_COUNT 2       // The amount of elevators present in this device
+// Elevator parameters
+#define ELEVATOR_MAX_TEMP   120   // Maximum temperature an elevator car can reach
+#define ELEVATOR_MIN_TEMP   50    // Minimum temperature an elevator car can reach
+#define ELEVATOR_CAPACITY   10    // The max amount of people that can be stored
+#define ELEVATOR_MAX_WEIGHT 1200  // The maximum allowed weight
+#define ELEVATOR_COUNT      2     // The amount of elevators present in this device
+
+/**General return codes
+ * 
+ * Return codes that are shared by all the tasks in the
+ * elevator system for the Arduino.
+ */ 
 
 #define INVALID_CAR_INDEX 255  // Return code for serial rx callbacks that signifies an invalid elevator car index was given
 
@@ -14,12 +25,6 @@
 
 #define CAR_INDEX_OFFSET 0  // Offset for the index of the car
 #define PAYLOAD_OFFSET   1  // Offset for the payload data
-
-
-// Floor names for the elevators
-
-char * floor_names_1[] = {"LOBBY", "1", "2", "3", "4", "5"};
-char * floor_names_2[] = {"LOBBY", "1", "TR","2", "3", "4", "5"};
 
 
 /* Function prototypes */
@@ -49,11 +54,15 @@ void setup()
         // Set elevator attributes
         if (mode == REGISTER_MODE)
         {
-            set_elevator_attrs(0, floor_names_1, 6, 120, 60, 10, 2000);
-            set_elevator_attrs(1, floor_names_2, 7, 120, 60, 10, 2000);
+            // Floor names for the elevators
+            char * floor_names_1[] = {"LOBBY", "1", "2", "3", "4", "5"};
+            char * floor_names_2[] = {"LOBBY", "1", "TR","2", "3", "4", "5"};
+
+            set_elevator_attrs(0, floor_names_1, 6, ELEVATOR_MAX_TEMP, ELEVATOR_MIN_TEMP, ELEVATOR_CAPACITY, ELEVATOR_MAX_WEIGHT);
+            set_elevator_attrs(1, floor_names_2, 7, ELEVATOR_MAX_TEMP, ELEVATOR_MIN_TEMP, ELEVATOR_CAPACITY, ELEVATOR_MAX_WEIGHT);
         }
 
-        // Register elevator tasks
+        // Register elevator tasks that can be called
         register_elevator_task("enter_elevator", ENTER_ELEVATOR, 3, enter_elevator);
         register_elevator_task("request_elevator", REQUEST_ELEVATOR, 2, request_elevator);
         register_elevator_task("set_floor", SET_FLOOR, 2, set_floor);
