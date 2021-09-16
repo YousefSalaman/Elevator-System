@@ -229,7 +229,7 @@ typedef struct
 } elevator_t;
 
 // Shorthand type for a task in the elevator system
-typedef uint8_t (*elevator_task_t)(uint8_t, uint8_t *);
+typedef void (*elevator_task_t)(uint8_t, uint8_t *);
 
 /* Elevator variables */
 
