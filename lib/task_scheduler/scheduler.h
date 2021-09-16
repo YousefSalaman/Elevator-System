@@ -73,7 +73,7 @@ bool init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb
 
 void send_task(void);
 void perform_task(void);
-bool store_task_rx_byte(uint8_t byte);
+bool build_rx_task_pkt(uint8_t byte);
 
 void register_task_private(uint8_t id, int payload_size, task_t task);
 

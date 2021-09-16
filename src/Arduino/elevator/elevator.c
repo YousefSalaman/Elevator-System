@@ -6,20 +6,24 @@
 
 /* Private elevator constants */
 
+#define FLOOR_NAME_HEADER 2
+#define FLOOR_NAME_LIMIT 10
+
 /* Elevator function prototypes*/
 
 static uint8_t find_requested_floors(elevator_t * car);
 static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacity);
+static void pass_elevator_names(char ** floor_names, uint8_t floor_count, uint8_t car_index);
 
 
 /* Public system elevator functions */
 
 // Set up attributes for elevator object
-void set_elevator_attrs(uint8_t car_index, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight)
+void set_elevator_attrs(uint8_t car_index, char ** floor_names, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight)
 {
-    elevator_t * car_p = get_elevator(car_index);
+    elevator_t * car = get_elevator(car_index);
 
-    if (car_p != NULL)
+    if (car != NULL)
     {
         // Limits for the elevator's car
         car_limits_t car_limits = 
@@ -41,7 +45,7 @@ void set_elevator_attrs(uint8_t car_index, uint8_t floor_count, uint8_t max_temp
         };
 
         // Set up elevator object
-        elevator_t car = 
+        elevator_t car_copy = 
         {
             .attrs = init_misc_elevator_attrs(floor_count, capacity),
             .state = car_state,
@@ -49,25 +53,20 @@ void set_elevator_attrs(uint8_t car_index, uint8_t floor_count, uint8_t max_temp
             .limits = car_limits
         };
 
-        car.behavior.curr_state = elevator_states[START];  // Start with the idle state (Change to init later)
+        car_copy.behavior.curr_state = elevator_states[START];  // Start with the idle state (Change to init later)
 
-        // Send initialized data to the computer as priority tasks
-        // The update_attr methods schedule a normal task instead of a priority one, so
-        // That's why this is done manually here
-        uint8_t * weight_p = (uint8_t *) &weight;
+        memcpy(car, &car_copy, sizeof(elevator_t));
 
-        /* TODO: Add an option to the update functions to send them as a normal or priority task 
-        You can do this by using schedule_task directly instead of schedule_normal_task */
-        // schedule_priority_task(UPDATE_FLOOR, ((uint8_t []){car_index, UPDATE_FLOOR, car.state.floor}), 3);
-        // schedule_priority_task(UPDATE_TEMPERATURE, ((uint8_t []){car_index, UPDATE_TEMPERATURE, car.state.temp}), 3);
-        // schedule_priority_task(UPDATE_DOOR_STATUS, ((uint8_t []){car_index, car.state.is_door_open}), 2);
-        // schedule_priority_task(UPDATE_LIGHT_STATUS, ((uint8_t []){car_index, car.state.is_light_on}), 2);
-        // schedule_priority_task(UPDATE_WEIGHT, ((uint8_t []){car_index, weight_p[0], weight_p[1]}), 3);
-        // schedule_priority_task(UPDATE_CAPACITY, ((uint8_t []){car_index, car.attrs.riders != NULL}), 2);
-        // schedule_priority_task(UPDATE_TEMPERATURE, ((uint8_t []){car_index, car.state.temp}), 2);
-        // schedule_priority_task(UPDATE_MOVEMENT_STATE, ((uint8_t []){car_index, car.attrs.move}), 2);
-        
-        memcpy(car_p, &car, sizeof(elevator_t));
+        // Send initialized data to the computer
+
+        update_elevator_temp(car_index, car);
+        update_elevator_floor(car_index, car);
+        update_elevator_weight(car_index, car);
+        update_elevator_capacity(car_index, car);
+        update_elevator_light_status(car_index, car);
+        update_elevator_movement_state(car_index, car);
+
+        pass_elevator_names(floor_names, floor_count, car_index);
     }
 }
 
@@ -111,8 +110,10 @@ void deinit_elevator(elevator_t * car)
  * and that this function will be called when the elevator reaches
  * said floor.
 */
-void enter_elevator(elevator_t * car, uint8_t * attrs)
+void enter_elevator(uint8_t car_index, uint8_t * attrs)
 {
+    elevator_t * car = get_elevator(car_index);
+
     if (car->state.floor && car->state.floor <= car->limits.floor)
     {
         uint8_t temp = attrs[0];
@@ -136,9 +137,9 @@ void enter_elevator(elevator_t * car, uint8_t * attrs)
         car->state.weight += weight;
 
         // Send new states to manager
-        update_elevator_temp(car);
-        update_elevator_weight(car);
-        update_elevator_capacity(car);
+        update_elevator_temp(car_index, car);
+        update_elevator_weight(car_index, car);
+        update_elevator_capacity(car_index, car);
     }
 }
 
@@ -151,7 +152,7 @@ void enter_elevator(elevator_t * car, uint8_t * attrs)
  * in these lists will be substracted from the current state of the
  * elevator.
 */
-void exit_elevator(elevator_t * car)
+void exit_elevator(elevator_t * car, uint8_t car_index)
 {
     uint8_t floor = car->state.floor - 1;
 
@@ -181,9 +182,9 @@ void exit_elevator(elevator_t * car)
     }
 
     // Send updated states to manager
-    update_elevator_temp(car);
-    update_elevator_weight(car);
-    update_elevator_capacity(car);
+    update_elevator_temp(car_index, car);
+    update_elevator_weight(car_index, car);
+    update_elevator_capacity(car_index, car);
 }
 
 
@@ -192,7 +193,7 @@ void exit_elevator(elevator_t * car)
  * This function will move the elevator based on the direction it's
  * currently moving.
 */
-void move_elevator(elevator_t * car)
+void move_elevator(elevator_t * car, uint8_t car_index)
 {
     uint8_t movement = car->attrs.move;
 
@@ -205,7 +206,7 @@ void move_elevator(elevator_t * car)
         car->state.floor--;
     }
 
-    update_elevator_floor(car);
+    update_elevator_floor(car_index, car);
 }
 
 
@@ -239,8 +240,10 @@ uint8_t find_next_floor(elevator_t * car)
  * placed into that floor it was requested to later find this
  * requested floor.
 */ 
-void request_elevator(elevator_t * car, uint8_t * p_floor)
+void request_elevator(uint8_t car_index, uint8_t * p_floor)
 {
+    elevator_t * car = get_elevator(car_index);
+
     if (*p_floor && *p_floor <= car->limits.floor)
     {
         uint8_t floor = *p_floor - 1;
@@ -261,7 +264,7 @@ void request_elevator(elevator_t * car, uint8_t * p_floor)
         {
             car->attrs.next_floor = *p_floor;
             car->attrs.move = (car->state.floor > car->attrs.next_floor)? DOWN: UP;
-            update_elevator_movement_state(car);
+            update_elevator_movement_state(car_index, car);
         }
     }
 }
@@ -274,12 +277,6 @@ void request_elevator(elevator_t * car, uint8_t * p_floor)
  * another device connected to the Arduino.
 */
 
-// Alert the elevator that it has been initialized in computer
-void alert_elevator_init(uint8_t car_index, uint8_t * _)
-{
-    (get_elevator(car_index))->attrs.is_init = true;
-}
-
 
 // Set the light on the elevator to a specific state
 void set_light_state(uint8_t car_index, uint8_t * state)
@@ -287,7 +284,7 @@ void set_light_state(uint8_t car_index, uint8_t * state)
     elevator_t * car = get_elevator(car_index);
 
     car->state.is_light_on = (*state > 0);
-    update_elevator_light_status(car);
+    update_elevator_light_status(car_index, car);
 }
 
 
@@ -297,7 +294,7 @@ void set_door_state(uint8_t car_index, uint8_t * state)
     elevator_t * car = get_elevator(car_index);
 
     car->state.is_door_open = (*state > 0);
-    update_elevator_door_status(car);
+    update_elevator_door_status(car_index, car);
 }
 
 
@@ -309,7 +306,7 @@ void set_floor(uint8_t car_index, uint8_t * floor)
     if (*floor && *floor <= car->limits.floor)
     {
         car->state.floor = *floor;
-        update_elevator_floor(car);
+        update_elevator_floor(car_index, car);
     }
 }
 
@@ -320,7 +317,7 @@ void set_temperature(uint8_t car_index, uint8_t * temp)
     elevator_t * car = get_elevator(car_index);
 
     car->state.temp = *temp;
-    update_elevator_temp(car);
+    update_elevator_temp(car_index, car);
 }
 
 
@@ -330,7 +327,7 @@ void set_weight(uint8_t car_index, uint8_t * weight)
     elevator_t * car = get_elevator(car_index);
 
     car->state.weight = *weight;
-    update_elevator_weight(car);
+    update_elevator_weight(car_index, car);
 }
 
 
@@ -340,7 +337,7 @@ void set_maintanence_state(uint8_t car_index, uint8_t * status)
     elevator_t * car = get_elevator(car_index);
 
     car->attrs.maintenance_needed = *status;
-    update_elevator_maintenance_status(car);
+    update_elevator_maintenance_status(car_index, car);
 }
 
 
@@ -353,7 +350,6 @@ static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacit
     {
         .move = STOP,
         .init_time = 0,
-        .is_init = false,
         .pressed_floors = NULL,
         .next_floor = NULL_FLOOR,
         .action_started = false,
@@ -441,4 +437,31 @@ static uint8_t find_requested_floors(elevator_t * car)
     }
 
     return NULL_FLOOR;  // Otherwise, no requests were found for the current direction
+}
+
+
+// Pass the floor names to the computer
+static void pass_elevator_names(char ** floor_names, uint8_t floor_count, uint8_t car_index)
+{
+    size_t name_len;
+    char name_pkt[FLOOR_NAME_LIMIT + FLOOR_NAME_HEADER];
+
+    name_pkt[0] = car_index;  // Add the car index to the packet
+    for (uint8_t i = 0; i < floor_count; i++)
+    {
+        name_pkt[1] = i;  // Add floor number to packet
+
+        // Pass floor name to the packet
+        name_len = strlen(floor_names[i]);
+        if (name_len <= FLOOR_NAME_LIMIT)
+        {
+            memcpy(&name_pkt[FLOOR_NAME_HEADER], floor_names[i], name_len);
+        }
+        else
+        {
+            name_len = strlen(itoa(i, &name_pkt[FLOOR_NAME_HEADER], 10));  // Uses the floor number as the floor name
+        }
+
+        schedule_normal_task(PASS_ELEVATOR_FLOOR_NAME, name_pkt, FLOOR_NAME_HEADER + name_len);
+    }
 }

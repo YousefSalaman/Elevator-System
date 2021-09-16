@@ -94,7 +94,7 @@ void register_task_private(uint8_t id, int payload_size, task_t task)
 
 
 // Form and detect the task rx packet reading byte-by-byte
-bool store_task_rx_byte(uint8_t byte)
+bool build_rx_task_pkt(uint8_t byte)
 {
     return process_incoming_byte(&scheduler.rx_pkt, byte);
 }

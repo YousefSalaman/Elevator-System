@@ -18,12 +18,10 @@ enum idle_stages
 // state_t prototypes
 
 static void idle_run(void * args);
-static void start_run(void * args);
 static void moving_run(void * args);
 static void emergency_run(void * args);
 
 static uint8_t idle_change(void * args);
-static uint8_t start_change(void * args);
 static uint8_t moving_change(void * args);
 static uint8_t emergency_change(void * args);
 static uint8_t maintenance_change(void * args);
@@ -32,56 +30,20 @@ static uint8_t maintenance_change(void * args);
 // State for elevators
 
 static state_t idle = {.run = idle_run, .change = idle_change};
-static state_t start = {.run = start_run, .change = start_change};
 static state_t moving = {.run = moving_run, .change = moving_change};
 static state_t emergency = {.run = emergency_run, .change = emergency_change};
 static state_t maintenance = {.run = emergency_run, .change = maintenance_change};
 
-state_t * elevator_states[] = {&idle, &start, &moving, &emergency, &maintenance};
+state_t * elevator_states[] = {&idle, &moving, &emergency, &maintenance};
 
 // Elevator state functions
-
-/* Start state functions */
-
-static void start_run(void * args)
-{
-    elevator_t * car = args;
-
-    if (!car->attrs.action_started)
-    {
-        car->attrs.action_started = true;
-
-        // Send status of elevator to the computer
-        update_elevator_capacity(car);
-        update_elevator_door_status(car);
-        update_elevator_floor(car);
-        update_elevator_light_status(car);
-        update_elevator_maintenance_status(car);
-        update_elevator_movement_state(car);
-        update_elevator_temp(car);
-        update_elevator_weight(car);
-    }
-}
-
-static uint8_t start_change(void * args)
-{
-    elevator_t * car = args;
-
-    if (car->attrs.is_init)
-    {
-        car->attrs.action_started = false;
-        return IDLE;
-    }
-
-    return START;
-}
-
 
 /* Emergency state functions */
 
 static void emergency_run(void * args)
 {
-    elevator_t * car = args;
+    uint8_t car_index = *((uint8_t *) args);
+    elevator_t * car = get_elevator(car_index);
 
     if (!car->attrs.action_started)
     {
@@ -90,15 +52,16 @@ static void emergency_run(void * args)
         car->attrs.action_started = START_ACTION;
 
         // Send updated states to manager
-        update_elevator_door_status(car);
-        update_elevator_light_status(car);
+        update_elevator_door_status(car_index, car);
+        update_elevator_light_status(car_index, car);
     }
 }
 
 
 static uint8_t emergency_change(void * args)
 {
-    elevator_t * car = args;
+    uint8_t car_index = *((uint8_t *) args);
+    elevator_t * car = get_elevator(car_index);
 
     if (elevator_within_limits(car))
     {
@@ -113,7 +76,8 @@ static uint8_t emergency_change(void * args)
 
 static uint8_t maintenance_change(void * args)
 {
-    elevator_t * car = args;
+    uint8_t car_index = *((uint8_t *) args);
+    elevator_t * car = get_elevator(car_index);
 
     if (!car->attrs.maintenance_needed)
     {
@@ -128,7 +92,8 @@ static uint8_t maintenance_change(void * args)
 
 static void moving_run(void * args)
 {
-    elevator_t * car = args;
+    uint8_t car_index = *((uint8_t *) args);
+    elevator_t * car = get_elevator(car_index);
 
     if (!car->attrs.action_started)
     {
@@ -140,14 +105,14 @@ static void moving_run(void * args)
     // Move from one floor to another
     else if (millis() - car->attrs.init_time > ELEVATOR_MOVE_TIME)
     {
-        move_elevator(car);
+        move_elevator(car, car_index);
         if (car->attrs.next_floor == car->state.floor)
         {
             car->attrs.next_floor = find_next_floor(car);
             car->attrs.move = STOP;  
-            exit_elevator(car);  // Get people out of the eleator
+            exit_elevator(car, car_index);  // Get people out of the eleator
 
-            update_elevator_movement_state(car);
+            update_elevator_movement_state(car_index, car);
         }
         car->attrs.action_started = END_ACTION;
     }
@@ -156,7 +121,8 @@ static void moving_run(void * args)
 
 static uint8_t moving_change(void * args)
 {
-    elevator_t * car = args;
+    uint8_t car_index = *((uint8_t *) args);
+    elevator_t * car = get_elevator(car_index);
 
     if (!elevator_within_limits(car))
     {
@@ -181,7 +147,8 @@ static uint8_t moving_change(void * args)
 
 static void idle_run(void * args)
 {
-    elevator_t * car = args;
+    uint8_t car_index = *((uint8_t *) args);
+    elevator_t * car = get_elevator(car_index);
 
     if (!car->attrs.action_started)
     {
@@ -191,8 +158,8 @@ static void idle_run(void * args)
         car->attrs.init_time = millis();
 
         // Send updated states to manager
-        update_elevator_door_status(car);
-        update_elevator_light_status(car);
+        update_elevator_door_status(car_index, car);
+        update_elevator_light_status(car_index, car);
     }
 
     // Verify timed events (closing door and turning lights off)
@@ -206,12 +173,12 @@ static void idle_run(void * args)
             if (car->state.is_door_open)
             {
                 car->state.is_door_open = CLOSE_DOOR;
-                update_elevator_door_status(car);
+                update_elevator_door_status(car_index, car);
             }
             else
             {
                 car->state.is_light_on = LIGHTS_OFF;
-                update_elevator_light_status(car);
+                update_elevator_light_status(car_index, car);
             }
         } 
     }        
