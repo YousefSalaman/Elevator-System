@@ -8,7 +8,7 @@
 
 #define ELEVATOR_COUNT 2       // The amount of elevators present in this device
 
-#define INVALID_CAR_INDEX 255  // Return code for serial rx callbacks that signifies a wrong elevator car index was given
+#define INVALID_CAR_INDEX 255  // Return code for serial rx callbacks that signifies an invalid elevator car index was given
 
 // Offsets for payload processing in serial callback
 
@@ -99,7 +99,9 @@ static uint8_t serial_rx_cb(uint8_t id, task_t task, uint8_t * pkt)
 
     if (car_index < ELEVATOR_COUNT)
     {
-        return ((elevator_task_t) task)(car_index, &pkt[PAYLOAD_OFFSET]);
+        ((elevator_task_t) task)(car_index, &pkt[PAYLOAD_OFFSET]);
+
+        return 0;
     }
 
     return INVALID_CAR_INDEX;
