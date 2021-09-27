@@ -8,47 +8,12 @@
 #endif
 
 #include "task_table/table.h"
+#include "scheduler_config.h"
 
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-
-/* Modifiable Public scheduler constants */
-
-#define MAX_SEND_TYPE double  // Biggest C primitive data type the MODIFY_TASK_VAL command can send
-
-// Task time range for the other system to reply
-
-#define SHORT_TIMER 350  // Allowed time for the first reply time range
-#define LONG_TIMER  500  // Allowed time for the second reply time range
-
-
-/* Immutable Public scheduler constants */
-
-// Offsets
-
-#define RET_CODE_OFFSET 6 // 
-
-// Task types
-
-#define INTERNAL_TASK 0
-#define EXTERNAL_TASK 1
-
-// Internal command ids
-
-#define ALERT_SYSTEM    0
-#define PRINT_MESSAGE   1
-#define UNSCHEDULE_TASK 2
-#define MODIFY_TASK_VAL 3
-
-// Pseudo-commands for the schedu
-
-#define PKT_DECODE    0
-#define PKT_ENCODE    1
-#define TASK_LOOKUP   2
-#define TASK_REGISTER 3
 
 
 /* Scheduler and helper types */
@@ -69,11 +34,10 @@ typedef uint8_t (*rx_schedule_cb)(uint8_t task_id, task_t task, uint8_t * pkt);
 /* Scheduler functions */
 
 void deinit_task_scheduler(void);
-bool init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb);
+bool init_task_scheduler(rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb);
 
 void send_task(void);
-void perform_task(void);
-bool build_rx_task_pkt(uint8_t byte);
+void build_rx_task_pkt(uint8_t byte);
 
 void register_task_private(uint8_t id, int payload_size, task_t task);
 
@@ -115,7 +79,7 @@ void schedule_task(uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bo
 /**Schedule an immediate priority task
  * 
  * This type of task follows the same rules as a priority task, but
- * this system will immediately send the task to the other system
+ * the system will immediately send the task to the other system
  * connected to the microcontroller.
 */
 #define schedule_fast_task(id, type, payload_pkt, payload_size) schedule_task(id, type, payload_pkt, payload_size, true, true)

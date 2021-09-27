@@ -45,7 +45,7 @@ bool init_elevator_subsystem(uint8_t count, rx_schedule_cb rx_cb, tx_schedule_cb
     elevators.group = NULL;  // Set the group to a placeholder value
 
     // Initialize task scheduler and default tasks
-    if (init_task_scheduler(QUEUE_SIZE, TABLE_SIZE, rx_cb, tx_cb, timer_cb))
+    if (init_task_scheduler(rx_cb, tx_cb, timer_cb))
     {
         // Allocate elevators to set up
         elevators.count = count;

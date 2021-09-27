@@ -7,8 +7,7 @@
 #include <stdbool.h>
 #endif
 
-#include <list.h>
-
+#include "../list/list.h"
 #include "../serial_pkt/serial_pkt.h"
 
 #ifdef __cplusplus
@@ -18,7 +17,7 @@ extern "C" {
 
 typedef struct
 {
-    uint8_t * id;      // Id to keep track of pending task
+    int16_t id;        // Id to keep track of pending task
     bool rescheduled;  // Flag to determine if entry has been rescheduled
     serial_pkt_t pkt;  // Packet given to the pending task
 
@@ -69,12 +68,12 @@ void pop_task(schedule_queues_t * queues, bool is_priority);
 
 // Queue pushing methods
 
-bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size, bool is_priority);
+bool push_task(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size, bool is_priority, bool is_fast);
 
-#define push_normal_task(queues, task_id, pkt, pkt_size) push_task(queues, task_id, pkt, pkt_size, false)
-#define push_priority_task(queues, task_id, pkt, pkt_size) push_task(queues, task_id, pkt, pkt_size, true)
+#define push_normal_task(queues, task_id, pkt, pkt_size) push_task(queues, task_id, pkt, pkt_size, false, false)
+#define push_priority_task(queues, task_id, pkt, pkt_size) push_task(queues, task_id, pkt, pkt_size, true, false)
 
-bool push_task_to_front(schedule_queues_t * queues, uint8_t task_id, uint8_t task_type, uint8_t * payload_pkt, uint8_t payload_size, bool is_priority);
+void prioritize_normal_task(schedule_queues_t * queues);
 
 // Rescheduling queue methods
 
@@ -86,8 +85,8 @@ bool in_queue(schedule_queues_t * queues, uint8_t id);
 
 #define queues_are_full(queues) ((queues)->unscheduled == NULL)
 
-#define is_normal_queue_empty(queues) ((queues)->priority_head == NULL)
-#define is_priority_queue_empty(queues) ((queues)->normal_head == NULL)
+#define is_normal_queue_empty(queues) ((queues)->normal_head == NULL)
+#define is_priority_queue_empty(queues) ((queues)->priority_head == NULL) 
 #define queues_are_empty(queues) (is_priority_queue_empty(queues) && is_normal_queue_empty(queues))
 
 

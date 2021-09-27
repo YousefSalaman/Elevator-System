@@ -3,15 +3,17 @@
 #include <string.h>
 
 #include "table.h"
+#include "../scheduler_config.h"
 
 
+/* Public task table functions */
 
 // Hash function for the lookup table
 #define hash(table, id) id % (table).size
 
 
 // Initialize task table for the elevator comms
-task_table_t init_task_table(uint16_t size)
+task_table_t init_task_table(uint8_t size)
 {
     task_table_t table;
     task_entry_t ** entries = malloc(sizeof(task_entry_t *) * size);
@@ -33,7 +35,7 @@ task_table_t init_task_table(uint16_t size)
 }
 
 
-// Deinitialize the task table
+// Uninitialize the task table
 void deinit_task_table(task_table_t table)
 {
     task_entry_t * entry;
@@ -75,10 +77,9 @@ task_entry_t * lookup_task(task_table_t table, uint8_t id)
 /**Add a task to the task table
  * 
  * NOTE: If payload size is set to a non-positive integer, the code will
- * disable packet size checking this task (i.e., payload size is set to
- * NULL.)
+ * disable packet size checking this task.
  */
-void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, task_t task) 
+void register_task_in_table(task_table_t * table, uint8_t id, int8_t payload_size, task_t task) 
 {
     // Add task to table if one was not added with the same id
     if (lookup_task(*table, id) == NULL)
@@ -86,21 +87,15 @@ void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, 
         uint8_t hash_value = hash(*table, id);
         task_entry_t * entry = malloc(sizeof(task_entry_t));
 
-        // Set attributes for new entry
+        // Set attributes for new entry 
         if (entry != NULL)
         {
             entry->id = id;
             entry->task = task;
+            entry->size = payload_size;
             entry->next = table->entries[hash_value];
 
             table->entries[hash_value] = entry;  // Make new entry head of list
-
-            // Store payload size in entry
-            entry->size = NULL;
-            if (payload_size > 0)
-            {
-                memcpy(entry->size, &(uint8_t){payload_size}, sizeof(uint8_t));
-            }
         }
     }
 }

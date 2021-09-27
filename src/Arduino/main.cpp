@@ -23,8 +23,8 @@
 
 // Offsets for payload processing in serial callback
 
-#define CAR_INDEX_OFFSET 0  // Offset for the index of the car
-#define PAYLOAD_OFFSET   1  // Offset for the payload data
+#define CAR_INDEX_OFFSET 0    // Offset for the index of the car
+#define CAR_PAYLOAD_OFFSET 1  // Offset for the payload data
 
 
 /* Function prototypes */
@@ -48,6 +48,7 @@ void setup()
         // Wait until user has chosen an operation mode
         while(!(mode = get_elevator_system_mode()))
         {
+            send_task();
             receive_serial_pkt();
         }
 
@@ -88,15 +89,12 @@ void loop()
 // Read from serial port
 static void receive_serial_pkt(void)
 {
-    int byte;  
+    int byte;  // It's an int cuz Serial.read outputs an int
     
     // Read incoming bytes and store in scheduler rx pkt buffer
     while ((byte = Serial.read()) >= 0)
     {
-        if (build_rx_task_pkt(byte))  // If a packet is found, then process it entirely
-        {
-            perform_task();
-        }
+        build_rx_task_pkt(byte);
     }
 }
 
@@ -108,7 +106,7 @@ static uint8_t serial_rx_cb(uint8_t id, task_t task, uint8_t * pkt)
 
     if (car_index < ELEVATOR_COUNT)
     {
-        ((elevator_task_t) task)(car_index, &pkt[PAYLOAD_OFFSET]);
+        ((elevator_task_t) task)(car_index, &pkt[CAR_PAYLOAD_OFFSET]);
 
         return 0;
     }
@@ -117,7 +115,7 @@ static uint8_t serial_rx_cb(uint8_t id, task_t task, uint8_t * pkt)
 }
 
 
-// Callback for serial communication
+// Callback for serial communication transmission
 static void serial_tx_cb(uint8_t * pkt, uint8_t pkt_size)
 {
     size_t bytes_to_send = pkt_size;

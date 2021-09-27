@@ -19,10 +19,10 @@ typedef void (*task_t)(void);
 */
 typedef struct entry
 {
-    uint8_t id;
-    task_t task;
-    uint8_t * size;
-    struct entry * next;
+    task_t task;          // Task to be executed
+    uint8_t id;           // Id (unique identifier) for the task
+    int16_t size;         // Size of the payload of the entry (if negative, it skips checking the length)
+    struct entry * next;  // Next entry in entry stack for a given hash
 
 } task_entry_t;
 
@@ -37,8 +37,8 @@ typedef struct entry
 */
 typedef struct 
 {
-    uint16_t size;
-    task_entry_t ** entries;
+    uint8_t size;             // Size of the table
+    task_entry_t ** entries;  // Array of stacks to store entries
 
 } task_table_t;
 
@@ -46,9 +46,9 @@ typedef struct
 /* Task table methods */
 
 void deinit_task_table(task_table_t table);
-task_table_t init_task_table(uint16_t size);
+task_table_t init_task_table(uint8_t size);
 task_entry_t * lookup_task(task_table_t table, uint8_t id);
-void register_task_in_table(task_table_t * table, uint8_t id, int payload_size, task_t task);
+void register_task_in_table(task_table_t * table, uint8_t id, int8_t payload_size, task_t task);
 
 
 #ifdef __cplusplus

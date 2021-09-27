@@ -17,7 +17,7 @@ typedef struct
     rx_schedule_cb rx_cb;
 
     // Tx attributes
-    uint8_t * prev_task;
+    int16_t prev_task;
     tx_schedule_cb tx_cb;
     unsigned long start_time;
     schedule_queues_t * queues;
@@ -39,41 +39,35 @@ static task_scheduler_t scheduler;
 
 /* Scheduler function prototypes */
 
+static void perform_task(void);
 static void process_current_task(void);
 
 
 /* Public scheduler functions */
 
 // Initialize task scheduler
-bool init_task_scheduler(uint8_t queue_size, uint16_t table_size, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb)
+bool init_task_scheduler(rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb)
 {
-    scheduler.prev_task = NULL;
+    scheduler.prev_task = -1;
 
     scheduler.rx_cb = rx_cb;
     scheduler.tx_cb = tx_cb;
     scheduler.timer_cb = timer_cb;
 
-    scheduler.table = init_task_table(table_size);
-    scheduler.rx_pkt = init_serial_pkt(PKT_BUF_SIZE);
-    scheduler.queues = init_scheduling_queues(queue_size, PKT_BUF_SIZE);
+    scheduler.table = init_task_table(TABLE_SIZE);
+    scheduler.rx_pkt = init_serial_pkt(MAX_ENCODED_PKT_BUF_SIZE);
+    scheduler.queues = init_scheduling_queues(QUEUE_SIZE, MAX_ENCODED_PKT_BUF_SIZE);
 
-    // If everything initialized correctly, then return true
-    if (scheduler.table.entries && scheduler.rx_pkt.buf && scheduler.queues)
+    // Verify if the scheduler was initialized correctly
+
+    bool is_initialized = scheduler.table.entries && scheduler.rx_pkt.buf && scheduler.queues;
+
+    if (!is_initialized)
     {
-        return true;
-    };
+        deinit_task_scheduler();  
+    }
 
-    /** Uninitialize everything if something was not initialized correctly
-     * 
-     * NOTE: The queues uninitialize themselves if anything was not 
-     * initialized correctly, so there's no need to deallocate the queues
-     * from here.
-     */
-    
-    deinit_task_table(scheduler.table);
-    deinit_serial_pkt(&scheduler.rx_pkt);
-
-    return false;
+    return is_initialized;
 }
 
 
@@ -94,9 +88,12 @@ void register_task_private(uint8_t id, int payload_size, task_t task)
 
 
 // Form and detect the task rx packet reading byte-by-byte
-bool build_rx_task_pkt(uint8_t byte)
+void build_rx_task_pkt(uint8_t byte)
 {
-    return process_incoming_byte(&scheduler.rx_pkt, byte);
+    if (process_incoming_byte(&scheduler.rx_pkt, byte))
+    {
+        perform_task();
+    }
 }
 
 
@@ -105,56 +102,25 @@ void schedule_task(uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bo
 {
     if (!in_queue(scheduler.queues, id))
     {
-        // Send a task to free up space in queues
+        // Send a task to free up space in queues (if queues were full)
         if (queues_are_full(scheduler.queues))
         {
             if (is_priority_queue_empty(scheduler.queues))
             {
-                prioritize_task();
+                prioritize_normal_task(scheduler.queues);
             }
 
             send_task();
         }
 
-        // Schedule task depending on the option that was chosen
+        push_task(scheduler.queues, id, type, pkt, pkt_size, is_priority, is_fast);  // Put task in appropiate queue
+
+        // Send task immediately if it's a fast task
         if (is_fast)
         {
-            push_task_to_front(scheduler.queues, id, type, pkt, pkt_size, true);
+            send_task();
         }
-        else
-        {
-            push_task(scheduler.queues, id, type, pkt, pkt_size, is_priority);
-        }
-
-        send_task();
     }
-}
-
-
-/** Process the stored scheduler rx packet
- * 
- * In here, the packet that was built with process_incoming_byte
- * will be processed in its entirety. 
- */ 
-void perform_task(void)
-{
-    uint8_t ret_code;
-    serial_pkt_t * rx_pkt = &scheduler.rx_pkt;
-    task_entry_t * entry = process_incoming_pkt(scheduler.table, rx_pkt);
-
-    if (entry != NULL) // If all checks passed, run rx callback (this is the handler for external tasks)
-    {
-        ret_code = scheduler.rx_cb(entry->id, entry->task, rx_pkt->buf + PAYLOAD_OFFSET);
-
-        alert_task_completion(entry->id, ret_code);
-    }
-
-    else if (get_task_type(rx_pkt) == INTERNAL_TASK && get_task_id(rx_pkt) == UNSCHEDULE_TASK)
-    {
-        process_current_task();
-    }
-
-    rx_pkt->byte_count = 0;  // Reset rx packet buffer
 }
 
 
@@ -166,8 +132,6 @@ void send_task(void)
         schedule_queues_t * queues = scheduler.queues;
         queue_entry_t * entry = is_priority_queue_empty(queues)? peek_normal(queues): peek_priority(queues);
 
-        process_outgoing_pkt(&entry->pkt);
-
         if (!is_priority_queue_empty(queues))  // Send priority tasks
         {
             scheduler.tx_cb(entry->pkt.buf, entry->pkt.byte_count);
@@ -175,9 +139,16 @@ void send_task(void)
         }
         else  // Send normal task
         {
-            bool reply_time_passed;
+            // Check if the task has been sent already
+            if (scheduler.prev_task != entry->id)
+            {
+                scheduler.prev_task = entry->id;
+                scheduler.start_time = scheduler.timer_cb();
+                scheduler.tx_cb(entry->pkt.buf, entry->pkt.byte_count);  // Run the serial tx routine
+            }
 
             // Check if elapsed time passed the reply window
+            bool reply_time_passed;  // Indicates if allowed reply time window for normal task has passed
             if (entry->rescheduled)
             {
                 reply_time_passed = scheduler.timer_cb() - scheduler.start_time >= LONG_TIMER;
@@ -187,23 +158,18 @@ void send_task(void)
                 reply_time_passed = scheduler.timer_cb() - scheduler.start_time >= SHORT_TIMER;
             }
 
-            // Check if the task has been sent already
-            if (scheduler.prev_task != entry->id)
-            {
-                scheduler.prev_task = entry->id;
-                scheduler.start_time = scheduler.timer_cb();
-                scheduler.tx_cb(entry->pkt.buf, entry->pkt.byte_count);  // Run the serial tx routine
-            }
-
             // Checks if the allowed reply time has passed
-            if (!entry->rescheduled && reply_time_passed)  // First reply window range check
+            if (reply_time_passed)
             {
-                entry->rescheduled = true;
-                reschedule_normal_task();
-            }
-            else if (entry->rescheduled && reply_time_passed)  // Second reply window range check
-            {
-                pop_normal_task(scheduler.queues);
+                if (entry->rescheduled) // Second reply window range check
+                {
+                    pop_normal_task(scheduler.queues);
+                }
+                else // First reply window range check
+                {
+                    entry->rescheduled = true;
+                    reschedule_normal_task();
+                }
             }
         }
     }
@@ -212,7 +178,7 @@ void send_task(void)
 
 /* Internal scheduler commands */
 
-//Modify a task value
+// Modify a task value
 void send_task_val(uint8_t task_id, uint8_t task_type, uint8_t value_id, void * value, size_t size)
 {
     static uint8_t var[sizeof(MAX_SEND_TYPE)];
@@ -232,18 +198,49 @@ void send_task_val(uint8_t task_id, uint8_t task_type, uint8_t value_id, void * 
  */ 
 static void process_current_task(void)
 {
-    queue_entry_t * entry = peek_normal(scheduler.queues);
-
-    if (get_task_id(&scheduler.rx_pkt) == *entry->id)
+    if (scheduler.queues->normal_head != NULL)
     {
-        if (scheduler.rx_pkt.buf[RET_CODE_OFFSET] && !entry->rescheduled)
+        queue_entry_t* entry = peek_normal(scheduler.queues);
+
+        if (scheduler.rx_pkt.buf[PAYLOAD_OFFSET] == entry->id)
         {
-            entry->rescheduled = true;
-            reschedule_normal_task();
-        }
-        else
-        {
-            pop_normal_task(scheduler.queues);
+            if (scheduler.rx_pkt.buf[PAYLOAD_OFFSET + 1] && !entry->rescheduled)
+            {
+                entry->rescheduled = true;
+                reschedule_normal_task();
+            }
+            else
+            {
+                pop_normal_task(scheduler.queues);
+            }
         }
     }
+}
+
+
+/* Private scheduler functions */
+
+/**Process the stored scheduler rx packet
+ * 
+ * In here, the packet that was built with process_incoming_byte
+ * will be processed in its entirety. 
+ */ 
+static void perform_task(void)
+{
+    uint8_t ret_code;
+    serial_pkt_t * rx_pkt = &scheduler.rx_pkt;
+    task_entry_t * entry = process_incoming_pkt(scheduler.table, rx_pkt);
+
+    if (entry != NULL) // If all checks passed, run rx callback (this is the handler for external tasks)
+    {
+        ret_code = scheduler.rx_cb(entry->id, entry->task, rx_pkt->buf + PAYLOAD_OFFSET);
+        alert_task_completion(entry->id, ret_code);
+    }
+
+    else if (get_task_type(rx_pkt) == INTERNAL_TASK && get_task_id(rx_pkt) == ALERT_SYSTEM)
+    {
+        process_current_task();
+    }
+
+    rx_pkt->byte_count = 0;  // Reset rx packet buffer
 }
