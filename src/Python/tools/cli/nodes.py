@@ -1,5 +1,13 @@
-
+from copy import copy
 from collections import deque
+
+
+class CLINodeError(Exception):
+    """An error regarding node objects in the cli.
+
+    Must be used indicating that a node was not defined or
+    that a node cannot be defined in the cli.
+    """
 
 
 class Node:
@@ -11,6 +19,7 @@ class Node:
 
     _tree = {}  # Tree where the nodes reside in
     _entries = deque()  # Nodes that were entered in the interface
+    _unlinked_nodes = set()  # Set of nodes that were not linked to its parent node
 
     def __init__(self, name, description=None, parent_name=None, callback=None):
 
@@ -23,37 +32,25 @@ class Node:
         if callback is not None:
             self.callback = callback
 
-        self._link_with_parent()
+        self.link_with_parent()
         self._add_node_to_node_class()
 
     def __repr__(self):
 
         return self.name + "\n"
 
-    @property
-    def has_callback(self):
-        """Check if the node has a callback function"""
-
-        return getattr(self, "callback", None) is not None
-
-    @property
-    def path(self):
-        """Gets the path from the root node to the current node."""
-
-        if self.parent is None:
-            path_to_node = []
-        else:
-            parent_node = self._tree[self.parent]
-            path_to_node = parent_node.path
-
-        path_to_node.append(self.name)
-        return path_to_node
-
     @classmethod
     def get_current_node(cls):
-        """Return the current node in the system."""
+        """Return the current node in the cli."""
 
         return cls._tree[cls._entries[-1]]
+
+    @classmethod
+    def get_root_node(cls):
+        """Return the root node in the cli."""
+
+        if len(cls._entries) != 0:
+            return cls._tree.get(cls._entries[0])
 
     @classmethod
     def get_node(cls, name):
@@ -64,6 +61,30 @@ class Node:
     def get_entries(cls):
 
         return cls._entries
+
+    def is_tree_leaf(self):
+
+        return len(self.children) == 0
+
+    @classmethod
+    def link_unlinked_nodes(cls):
+        """Attempt to link the listed unlinked nodes to their respective parents"""
+
+        for node_name in copy(cls._unlinked_nodes):
+            node = cls._tree[node_name]
+            if cls._tree.get(node.parent) is not None:
+                node.link_with_parent()
+                cls._unlinked_nodes.remove(node.name)
+
+    def link_with_parent(self):
+        """Link the current node to its parent if it has one"""
+
+        if self.parent is not None:
+            parent_node = self._tree.get(self.parent)
+            if parent_node is None:  # Add name to the list of unlinked nodes if parent node is not present
+                self._unlinked_nodes.add(self.name)
+            else:  # Otherwise, link to parent node
+                parent_node.children.add(self.name)
 
     def register(self, node_name, description=None):
         """Alternate constructor for a node.
@@ -95,17 +116,6 @@ class Node:
 
         return Node(node_name, description, self.name)
 
-    def register_test(self, test):
-        """Alternate constructor for a node.
-
-        You can register test node under a device node through this method.
-
-        - For example,
-          test_node = device.register_test(test_function)
-        """
-
-        return Node(test.__name__, test.__doc__, self.name, test)
-
     @classmethod
     def reset_tree(cls):
         """Resets the node tree to its initial state"""
@@ -119,21 +129,13 @@ class Node:
 
         # Add node to the node storage
         if self._tree.get(self.name) is not None:
-            raise KeyError("This name was already registered.")
-        self._tree[self.name] = self  # Add node to storage of nodes
+            raise CLINodeError("This name was already registered.")
+        self._tree[self.name] = self  # Add node to node tree
 
         # Save the root node of the interface
         if self.parent is None:
             if len(self._entries) != 0:
-                raise KeyError("There can only be one root in the interface."
-                               "{} is the root of the interface, ".format(self._entries[0]) +
-                               "but the node '" + self.name + "' was being added as a root.")
+                raise CLINodeError("There can only be one root in the interface."
+                                   "{} is the root of the interface, ".format(self._entries[0]) +
+                                   "but the node '" + self.name + "' was being added as a root.")
             self._entries.append(self.name)
-
-    def _link_with_parent(self):
-        """Link the current node to its parent if it has one"""
-
-        if self.parent is not None:
-            parent_node = self._tree.get(self.parent)
-            if parent_node is not None:
-                parent_node.children.add(self.name)

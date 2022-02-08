@@ -20,6 +20,11 @@ extern "C" {
 
 typedef unsigned long (*timer_schedule_cb)(void);
 
+/**Tx callback function
+ * 
+ * When a task needs to be sent to another destination, this callback will
+ * be called with the packet and the amount of bytes to sent.
+ */
 typedef void (*tx_schedule_cb)(uint8_t * pkt, uint8_t pkt_size);
 
 /**Rx callback function

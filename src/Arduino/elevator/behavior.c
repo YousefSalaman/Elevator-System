@@ -110,7 +110,7 @@ static void moving_run(void * args)
         {
             car->attrs.next_floor = find_next_floor(car);
             car->attrs.move = STOP;  
-            exit_elevator(car, car_index);  // Get people out of the eleator
+            exit_elevator(car, car_index);  // Get people out of the elevator
 
             update_elevator_movement_state(car_index, car);
         }
