@@ -16,6 +16,42 @@ extern "C" {
 #endif
 
 
+/* Scheduler constants */
+
+/**Scheduler printer unpacking keys
+ * 
+ * Whenever you want to change a task printer variable on the main computer,
+ * you need to specify what variable type you are sending, so the it can be
+ * correctly processed by the main computer, which is why these are provided
+ * below.
+ * 
+ * You will notice that the variable types are ASCII/Unicode characters.
+ * The reason for this is because the Python struct module uses these to 
+ * know what format an incoming byte stream must be interpreted/unpacked
+ * and the 'c' format seems to be using Unicode to interpret the characters.
+ * To avoid any mishaps, use the constants below to describe the type of
+ * variable you want to send. However, the amount of bytes per data type may
+ * vary depending on the MCUs, so you should verify the internal data type
+ * sizes before sending it to the main computer.
+ */ 
+
+#define PRINT_SIZE_T     '\x4E'  // Prints size_t variable
+#define PRINT_SSIZE_T    '\x6E'  // Prints ssize_t variable
+#define PRINT_INT8_T     '\x42'  // Prints signed char and expects 1 byte
+#define PRINT_UINT8_T    '\x62'  // Prints unsigned char and expects 1 byte
+#define PRINT_INT16_T    '\x68'  // Prints signed short and expects 2 bytes
+#define PRINT_UINT16_T   '\x48'  // Prints unsigned short and expects 2 bytes
+#define PRINT_INT32_T    '\x69'  // Prints signed integer and expects 4 bytes
+#define PRINT_UINT32_T   '\x49'  // Prints unsigned integer and expects 4 bytes
+#define PRINT_INT64_T    '\x51'  // Prints signed long long and expects 8 bytes
+#define PRINT_UINT64_T   '\x71'  // Prints unsigned long long and expects 8 bytes
+#define PRINT_FLOAT16_T  '\x65'  // Prints half-precision float and expects 2 bytes
+#define PRINT_FLOAT32_T  '\x66'  // Prints single-precision float and expects 4 bytes
+#define PRINT_FLOAT64_T  '\x64'  // Prints double-precision float and expects 8 bytes
+#define PRINT_BOOL       '\x3F'  // Prints the correspoding boolean value and expects 1 byte
+#define PRINT_CHAR       '\x63'  // Prints the corresponding ASCII/Unicode character and expects 1 byte
+
+
 /* Scheduler and helper types */
 
 typedef unsigned long (*timer_schedule_cb)(void);
@@ -58,10 +94,12 @@ void schedule_task(uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bo
  * an external device running the scheduling system so it can remove the
  * task from the normal scheduling queue. 
  * 
- * It uses the timer callback to check if the allowed reply time has passed to wait for the other system to reply. If it 
- * doesn't reply in time, the task will be rescheduled with a larger timer
- * window for the other system to reply. If this also fails, the system will
- * unschedule the task.
+ * It uses the timer callback to check if the allowed reply time has passed to
+ * wait for the other system to reply. If it does not reply in time, the task
+ * will be rescheduled with a larger timer window for the other system to reply.
+ * If this also fails, the system will reschedule the task in the priority queue
+ * and tell the other system to execute it and unschedule it afterwards without
+ * verifying if it was executed properly in the other system.
  */
 #define schedule_normal_task(id, payload_pkt, payload_size) schedule_task(id, EXTERNAL_TASK, payload_pkt, payload_size, false, false)
 
@@ -102,10 +140,10 @@ void schedule_task(uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bo
 #define print_message(id, msg_num) schedule_fast_task(PRINT_MESSAGE, INTERNAL_TASK, ((uint8_t []) {id, EXTERNAL_TASK, msg_num}), sizeof(uint8_t) * 3)
 #define print_internal_message(id, msg_num) schedule_fast_task(PRINT_MESSAGE, INTERNAL_TASK, ((uint8_t []) {id, INTERNAL_TASK, msg_num}), sizeof(uint8_t) * 3)
 
-void send_task_val(uint8_t task_id, uint8_t task_type, uint8_t value_id, void * value, size_t size);
+void send_printer_task_var(uint8_t task_id, uint8_t task_type, uint8_t value_id, uint8_t value_type, void * value, size_t size);
 
-#define modify_task_val(id, val_id, val, size) send_task_val(id, EXTERNAL_TASK, val_id, val, size)
-#define modify_internal_task_val(id, val_id, val, size) send_task_val(id, INTERNAL_TASK, val_id, val, size)
+#define modify_printer_var(id, var_id, var_type, var, size) send_printer_task_var(id, EXTERNAL_TASK, var_id, var_type, var, size)
+#define modify_internal_printer_var(id, var_id, var_type, var, size) send_printer_task_var(id, INTERNAL_TASK, var_id, var_type, var, size)
 
 #ifdef __cplusplus
 }

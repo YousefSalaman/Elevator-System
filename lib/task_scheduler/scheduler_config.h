@@ -54,7 +54,7 @@
 
 // Modifiable Public scheduler constants
 
-#define MAX_SEND_TYPE double  // Biggest C primitive data type the MODIFY_TASK_VAL command can send
+#define MAX_PRINTER_SEND_TYPE long long  // Biggest C primitive data type the MODIFY_TASK_VAL command can send
 
 // Task time range for the other system to reply
 
@@ -70,11 +70,11 @@
 
 // Internal command ids
 
-#define ALERT_SYSTEM     0
-#define PRINT_MESSAGE    1
-#define UNSCHEDULE_TASK  2
-#define MODIFY_TASK_VAL  3
-#define PKT_DECODE       4
-#define PKT_ENCODE       5
-#define TASK_LOOKUP      6
-#define TASK_REGISTER    7
+#define ALERT_SYSTEM        0
+#define PRINT_MESSAGE       1
+#define UNSCHEDULE_TASK     2
+#define MODIFY_PRINTER_VAR  3
+#define PKT_DECODE          4
+#define PKT_ENCODE          5
+#define TASK_LOOKUP         6
+#define TASK_REGISTER       7

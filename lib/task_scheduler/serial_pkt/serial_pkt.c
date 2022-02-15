@@ -8,10 +8,11 @@
 
 /* Private packet constants constants */
 
-// Internal decode pseudo-command values
+// Internal decode printer task values
 
 #define EXPECTED_PKT_SIZE 0
 #define RECEIVED_PKT_SIZE 1
+#define CURRENT_TASK_NUM  2
 
 // Possible decoding errors
 
@@ -119,6 +120,7 @@ task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
     // Check if entry was registered
     if (entry == NULL)
     {
+        modify_internal_printer_var(PKT_DECODE, CURRENT_TASK_NUM, PRINT_UINT8_T, rx_pkt->buf + TASK_ID_OFFSET, sizeof(uint8_t));
         print_internal_message(PKT_DECODE, TASK_NOT_REGISTERED); 
         return NULL;
     }
@@ -129,8 +131,9 @@ task_entry_t * process_incoming_pkt(task_table_t table, serial_pkt_t * rx_pkt)
     {
         if (rx_pkt->byte_count != entry->size + DECODED_HDR_SIZE)
         {
-            modify_internal_task_val(PKT_DECODE, RECEIVED_PKT_SIZE, (uint16_t []){rx_pkt->byte_count}, sizeof(uint16_t));
-            modify_internal_task_val(PKT_DECODE, EXPECTED_PKT_SIZE, (uint16_t []){entry->size + DECODED_HDR_SIZE}, sizeof(uint16_t));
+            modify_internal_printer_var(PKT_DECODE, CURRENT_TASK_NUM, PRINT_UINT8_T, rx_pkt->buf + TASK_ID_OFFSET, sizeof(uint8_t));
+            modify_internal_printer_var(PKT_DECODE, RECEIVED_PKT_SIZE, PRINT_SIZE_T, &rx_pkt->byte_count, sizeof(size_t));
+            modify_internal_printer_var(PKT_DECODE, EXPECTED_PKT_SIZE, PRINT_INT16_T, (int16_t []){entry->size + DECODED_HDR_SIZE}, sizeof(int16_t));
             print_internal_message(PKT_DECODE, INCORRECT_PAYLOAD_SIZE);
             return NULL;
         }

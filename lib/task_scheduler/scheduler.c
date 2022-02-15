@@ -178,14 +178,20 @@ void send_task(void)
 
 /* Internal scheduler commands */
 
-// Modify a task value
-void send_task_val(uint8_t task_id, uint8_t task_type, uint8_t value_id, void * value, size_t size)
+// Modify a task printer value in the main computer
+void send_printer_task_var(uint8_t task_id, uint8_t task_type, uint8_t value_id, uint8_t value_type, void * value, size_t size)
 {
-    static uint8_t var[sizeof(MAX_SEND_TYPE)];
+    static uint8_t var_buf[sizeof(MAX_PRINTER_SEND_TYPE) + 4];  // Static storage to place the value of the variable
 
-    var[0] = value_id;
-    memcpy(var + 1, value, size);
-    schedule_fast_task(task_id, task_type, var, size);
+    if (size <= sizeof(MAX_PRINTER_SEND_TYPE))
+    {
+        var_buf[0] = task_id;
+        var_buf[1] = task_type;
+        var_buf[2] = value_id;
+        var_buf[3] = value_type;
+        memcpy(var_buf + 2, value, size);
+        schedule_fast_task(MODIFY_PRINTER_VAR, INTERNAL_TASK, var_buf, size + 4);
+    }
 }
 
 

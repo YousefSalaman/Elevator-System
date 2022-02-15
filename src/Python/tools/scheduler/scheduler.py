@@ -1,4 +1,5 @@
 
+import warnings
 from time import time
 from collections import deque
 
@@ -159,6 +160,14 @@ class _SchedulingLists:
         return new_task
 
 
+class SchedulerError(Exception):
+    pass
+
+
+class SchedulerWarning(Warning):
+    pass
+
+
 class Scheduler:
     """Scheduler that manages communications with other devices
 
@@ -176,17 +185,23 @@ class Scheduler:
     be called with the packet and the amount of bytes to sent.
     """
 
-    def __init__(self, name, task_count):
+    _schedulers = {}
+
+    def __init__(self, name, task_count, is_little_endian=True, no_internal_set_up=False):
 
         self.name = name
         self.task_table = {}
         self.prev_task = None
         self.start_time = None
+        self.printer = printer.SchedulerPrinter(is_little_endian, no_internal_set_up)
+
         self._rx_pkt = pkt_handler.SchedulerPacket()
         self._schedule_qs = _SchedulingLists(task_count)
 
         self.rx_callback = None
         self.tx_callback = None
+
+        self._schedulers[name] = self
 
     def build_incoming_pkt(self, byte):
         """Form and detect the incoming packet reading byte-by-byte"""
@@ -194,14 +209,38 @@ class Scheduler:
         if self._rx_pkt.process_incoming_byte(byte):
             self._perform_task()
 
-    def register_task(self, task_id, task_size, callback):
-        """Register a task in the scheduler"""
+    def copy(self, dev_name):
+
+        task_count = len(self._schedule_qs.unscheduled)
+        scheduler = Scheduler(dev_name, task_count, self.printer._endianness == '<', True)
+        scheduler.printer = self.printer
+        scheduler.task_table = self.task_table
+
+        return scheduler
+
+    @classmethod
+    def get_scheduler(cls, name):
+
+        scheduler = cls._schedulers.get(name)
+        if scheduler is None:
+            warnings.warn("Scheduler for {} was not found".format(name), SchedulerWarning)
+        return scheduler
+
+    def register_task(self, task_name, task_id, task_size, callback, *task_printer_vars):
+        """Register a task in the scheduler
+
+        When a task is registered, it will register it in both the
+        scheduler and its printer system. The task printer
+        variables are there to print values for messages that you
+        might want to print that are state dependent.
+        """
 
         # If task with the same number has already been registered, raise error
         if self.task_table.get(task_id):
             raise KeyError("Task number '{}' has already been registered.".format(task_id))
 
         self.task_table[task_id] = _TaskTableEntry(callback, task_size)
+        self.printer._register_task(task_name, constants.EXTERNAL_TASK, task_id, *task_printer_vars)
 
     def schedule_normal_task(self, task_id, pkt):
 
@@ -265,11 +304,21 @@ class Scheduler:
             self._schedule_general_task(constants.ALERT_SYSTEM, constants.INTERNAL_TASK,
                                         alert_system_pkt, True, True)
 
-        elif (self._rx_pkt.buf[constants.TASK_TYPE_OFFSET] == constants.INTERNAL_TASK
-            and self._rx_pkt.buf[constants.TASK_ID_OFFSET] == constants.ALERT_SYSTEM):
-            self._process_current_task()
+        elif self._rx_pkt.buf[constants.TASK_TYPE_OFFSET] == constants.INTERNAL_TASK:
+            self._process_internal_task()
 
         self._rx_pkt.buf = bytearray()  # Reset rx packet buffer
+
+    def _process_internal_task(self):
+        """This method basically acts as an internal task table"""
+
+        internal_task_id = self._rx_pkt.buf[constants.TASK_ID_OFFSET]
+        if internal_task_id == constants.ALERT_SYSTEM:
+            self._process_current_task()
+        elif internal_task_id == constants.PRINT_MESSAGE:
+            self.printer.print_task_msg(self._rx_pkt.buf[constants.PAYLOAD_OFFSET:], self.name)
+        elif internal_task_id == constants.MODIFY_PRINTER_VARS:
+            self.printer.modify_task_printer_var(self._rx_pkt.buf[constants.PAYLOAD_OFFSET:])
 
     def _process_current_task(self):
         """Decides what action for the task to take based on the other system's reply"""
