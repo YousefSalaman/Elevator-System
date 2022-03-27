@@ -3,7 +3,7 @@ import serial
 import threading
 
 from . import scheduler
-from ..config import config, tasks
+from ..config import setup, tasks
 
 
 class SerialMessenger:
@@ -106,4 +106,4 @@ class SerialMessenger:
         self.scheduler.tx_callback = self._serial_tx_cb
         self.scheduler.rx_callback = self._serial_rx_cb
 
-        config.define_scheduler_tasks(scheduler)
+        setup.define_scheduler_tasks(scheduler)
