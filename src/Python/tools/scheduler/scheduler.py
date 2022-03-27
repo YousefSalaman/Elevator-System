@@ -182,18 +182,40 @@ class Scheduler:
     - Tx callback function
 
     When a task needs to be sent to another destination, this callback will
-    be called with the packet and the amount of bytes to sent.
+    be called with the packet and the amount of bytes to sent. The callback
+    must define a way to send the packet to a microcontroller.
+
+    - Build incoming packet
+
+    Similar to the tx callback, one must define a function that receives the
+    incoming bytes and pass those bytes to a scheduler through the build
+    incoming packet method.
+
+    - Registering tasks
+
+    For a task to be callable from a microcontroller, one must register a task
+    with its task id and a function that represents the task to be performed.
+
+    - Scheduling tasks
+
+    To make an MCU perform a task, one must schedule it through a scheduler. If
+    you need to perform a task quickly, one can schedule it with priority. This
+    will skip the alert task completion verification from the MCU and remove it
+    from the priority queue, the place where it's scheduled, as soon as it's sent
+    to the MCU. Otherwise, it will schedule a normal task, which will reschedule
+    a task if the computer didn't receive the alert task completion flag from the
+    MCU.
     """
 
     _schedulers = {}
 
-    def __init__(self, name, task_count, is_little_endian=True, no_internal_set_up=False):
+    def __init__(self, task_count, name=None, is_little_endian=True, no_internal_setup=False):
 
-        self.name = name
+        self._name = name
         self.task_table = {}
         self.prev_task = None
         self.start_time = None
-        self.printer = printer.SchedulerPrinter(is_little_endian, no_internal_set_up)
+        self.printer = printer.SchedulerPrinter(is_little_endian, no_internal_setup)
 
         self._rx_pkt = pkt_handler.SchedulerPacket()
         self._schedule_qs = _SchedulingLists(task_count)
@@ -201,7 +223,8 @@ class Scheduler:
         self.rx_callback = None
         self.tx_callback = None
 
-        self._schedulers[name] = self
+        if name is not None:
+            self._schedulers[name] = self
 
     def build_incoming_pkt(self, byte):
         """Form and detect the incoming packet reading byte-by-byte"""
@@ -209,14 +232,24 @@ class Scheduler:
         if self._rx_pkt.process_incoming_byte(byte):
             self._perform_task()
 
-    def copy(self, dev_name):
+    def copy(self, copy_callbacks=False):
+        """Create a scheduler copy with the given scheduler"""
 
         task_count = len(self._schedule_qs.unscheduled)
-        scheduler = Scheduler(dev_name, task_count, self.printer._endianness == '<', True)
+        scheduler = Scheduler(task_count, self.printer.is_little_endian, True)
         scheduler.printer = self.printer
         scheduler.task_table = self.task_table
 
+        if copy_callbacks:
+            scheduler.tx_callback = self.tx_callback
+            scheduler.rx_callback = self.rx_callback
+
         return scheduler
+
+    @classmethod
+    def create_task_handler(cls, task_id):
+
+        return lambda scheduler_name, pkt: cls.perform_task(scheduler_name, task_id, pkt)
 
     @classmethod
     def get_scheduler(cls, name):
@@ -226,27 +259,43 @@ class Scheduler:
             warnings.warn("Scheduler for {} was not found".format(name), SchedulerWarning)
         return scheduler
 
-    def register_task(self, task_name, task_id, task_size, callback, *task_printer_vars):
-        """Register a task in the scheduler
+    @property
+    def name(self):
 
-        When a task is registered, it will register it in both the
-        scheduler and its printer system. The task printer
-        variables are there to print values for messages that you
-        might want to print that are state dependent.
-        """
+        return self._name
+
+    @name.setter
+    def name(self, name):
+
+        named_scheduler = self._schedulers.get(name)
+        if named_scheduler is None or named_scheduler is self:
+            self._name = name
+            self._schedulers[name] = self
+
+    @classmethod
+    def perform_task(cls, scheduler_name, task_id, pkt):
+        """Schedule a normal task by using its scheduler name"""
+
+        scheduler = cls._schedulers.get(scheduler_name)
+        if scheduler is not None:
+            scheduler._schedule_general_task(task_id, constants.EXTERNAL_TASK, pkt, False, False)
+
+    def register_task(self, task_id, task_size, callback):
+        """Register a task in the scheduler, so it can be called by another system."""
 
         # If task with the same number has already been registered, raise error
         if self.task_table.get(task_id):
             raise KeyError("Task number '{}' has already been registered.".format(task_id))
 
         self.task_table[task_id] = _TaskTableEntry(callback, task_size)
-        self.printer._register_task(task_name, constants.EXTERNAL_TASK, task_id, *task_printer_vars)
 
     def schedule_normal_task(self, task_id, pkt):
+        """Schedule a normal task to be performed by an MCU"""
 
         self._schedule_general_task(task_id, constants.EXTERNAL_TASK, pkt, False, False)
 
     def schedule_priority_task(self, task_id, pkt):
+        """Schedule a priority task to be performed by an MCU"""
 
         self._schedule_general_task(task_id, constants.EXTERNAL_TASK, pkt, True, False)
 

@@ -18,7 +18,7 @@ extern "C" {
 
 /* Scheduler constants */
 
-/**Scheduler printer unpacking keys
+/**Scheduler printer unpacking keys/var types
  * 
  * Whenever you want to change a task printer variable on the main computer,
  * you need to specify what variable type you are sending, so the it can be

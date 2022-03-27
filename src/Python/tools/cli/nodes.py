@@ -17,14 +17,14 @@ class Node:
     and are in charge of establishing a structure for the cli.
     """
 
-    _tree = {}  # Tree where the nodes reside in
+    _nodes = {}  # Tree where the nodes reside in
     _entries = deque()  # Nodes that were entered in the interface
     _unlinked_nodes = set()  # Set of nodes that were not linked to its parent node
 
     def __init__(self, name, description=None, parent_name=None, callback=None):
 
         self.name = name  # Name of the current node
-        self.children = set()  # Name of the direct descendant nodes
+        self.children = set()  # Names of the direct descendant nodes
         self.parent = parent_name  # Name of the node this node is registered to
         self.description = description  # Description for the node/page
 
@@ -37,32 +37,35 @@ class Node:
 
     def __repr__(self):
 
-        return self.name + "\n"
+        return "Current page: " + self.name + "\n"
 
     @classmethod
     def get_current_node(cls):
         """Return the current node in the cli."""
 
-        return cls._tree[cls._entries[-1]]
+        return cls._nodes[cls._entries[-1]]
 
     @classmethod
     def get_root_node(cls):
         """Return the root node in the cli."""
 
         if len(cls._entries) != 0:
-            return cls._tree.get(cls._entries[0])
+            return cls._nodes.get(cls._entries[0])
 
     @classmethod
     def get_node(cls, name):
+        """Return the node with the given name"""
 
-        return cls._tree.get(name)
+        return cls._nodes.get(name)
 
     @classmethod
     def get_entries(cls):
+        """Get the entries of the cli"""
 
         return cls._entries
 
     def is_tree_leaf(self):
+        """Verifies if the current node does not have any children"""
 
         return len(self.children) == 0
 
@@ -71,8 +74,8 @@ class Node:
         """Attempt to link the listed unlinked nodes to their respective parents"""
 
         for node_name in copy(cls._unlinked_nodes):
-            node = cls._tree[node_name]
-            if cls._tree.get(node.parent) is not None:
+            node = cls._nodes[node_name]
+            if cls._nodes.get(node.parent) is not None:
                 node.link_with_parent()
                 cls._unlinked_nodes.remove(node.name)
 
@@ -80,7 +83,7 @@ class Node:
         """Link the current node to its parent if it has one"""
 
         if self.parent is not None:
-            parent_node = self._tree.get(self.parent)
+            parent_node = self._nodes.get(self.parent)
             if parent_node is None:  # Add name to the list of unlinked nodes if parent node is not present
                 self._unlinked_nodes.add(self.name)
             else:  # Otherwise, link to parent node
@@ -128,9 +131,9 @@ class Node:
         """Save relevant node attributes to the node class attributes"""
 
         # Add node to the node storage
-        if self._tree.get(self.name) is not None:
+        if self._nodes.get(self.name) is not None:
             raise CLINodeError("This name was already registered.")
-        self._tree[self.name] = self  # Add node to node tree
+        self._nodes[self.name] = self  # Add node to node tree
 
         # Save the root node of the interface
         if self.parent is None:

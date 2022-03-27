@@ -1,5 +1,4 @@
-"""
-Printer system of the scheduler library.
+"""Printer system of the scheduler library.
 
 Its purpose is to provide a way to display messages on the main
 computer side based on events that are happening in the MCUs while
@@ -7,9 +6,6 @@ reducing the amount of information being transferred through the
 choosen method of communication. This is done by registering the
 messages in the computer and using the scheduling system to trigger
 the what message to print.
-
-The system assumes that for a given process containing a set of
-scheduler objects, the schedulers share the same task table.
 """
 
 from __future__ import print_function
@@ -48,6 +44,12 @@ class SchedulerPrinter:
         if not skip_set_up:
             self._set_up_internal_task_printers()
 
+    @property
+    def is_little_endian(self):
+        """Notifies if the printer interprets incoming tasks variables """
+
+        return self._endianness == '<'
+
     def print_task_msg(self, print_buf, dev_name=None):
 
         task_id, task_type, msg_num = print_buf
@@ -73,6 +75,10 @@ class SchedulerPrinter:
     def register_msg(self, task_id, task_msg, task_msg_num, verbose=True):
 
         self._register_msg(constants.EXTERNAL_TASK, task_id, task_msg, task_msg_num, verbose)
+
+    def register_task(self, task_name, task_id, *task_vars):
+
+        self._register_task(task_name, constants.EXTERNAL_TASK, task_id, *task_vars)
 
     def set_task_msg_silent_status(self, task_id, msg_num, silent_status):
 

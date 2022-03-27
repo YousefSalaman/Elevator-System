@@ -149,7 +149,7 @@ class SchedulerPacket:
 
             code = self.buf[read_index]
 
-            # If encoded byte (code) points outside the range of the input, reset packet buffer
+            # If encoded byte (code) points outside the range of the input, activate packet buffer
             if read_index + code > length and code != 1:
                 self.buf = bytearray()
                 return False
