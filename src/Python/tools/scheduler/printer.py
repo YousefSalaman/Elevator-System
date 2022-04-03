@@ -45,6 +45,12 @@ class SchedulerPrinter:
             self._set_up_internal_task_printers()
 
     @property
+    def endianness_format(self):
+        """Retrieves the format character used for the endianness"""
+
+        return self._endianness
+
+    @property
     def is_little_endian(self):
         """Notifies if the printer interprets incoming tasks variables """
 

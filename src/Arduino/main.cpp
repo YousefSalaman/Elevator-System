@@ -76,6 +76,19 @@ void setup()
 }
 
 
+void setup()
+{
+    // Initialize serial channel
+    Serial.begin(115200);
+
+    // Initialize scheduler
+    if (init_task_scheduler(serial_rx_cb, serial_tx_cb, millis))
+    {
+        
+    }
+}
+
+
 void loop() 
 {
     send_task();

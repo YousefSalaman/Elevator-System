@@ -1,6 +1,4 @@
 
-import struct
-
 from ..tools import cli, devices, testers
 
 
@@ -12,6 +10,8 @@ REGISTER_DEVICE = 253
 REGISTER_TESTER = 252
 ADD_DEVICE_ATTR = 251
 ALERT_MCU_SETUP_COMPLETION = 250
+UPDATE_DEVICE_ATTR_COMP = 249
+UPDATE_DEVICE_ATTR_MCU = 248
 
 
 # Innate tasks of the testbed
@@ -60,12 +60,11 @@ def register_device(thread_id, pkt):
 
     # Get pkt info
     tracker_id = pkt[0]
-    device_id = pkt[1]
-    device_name = str(pkt[2:])
+    device_count = pkt[1]
 
     tracker = devices.DeviceTracker.get_tracker(tracker_id=tracker_id)
     if tracker is not None:
-        tracker.add_device(device_id, device_name, thread_id)
+        tracker.add_device(device_count, thread_id)
 
 
 def register_tester(pkt):
@@ -100,22 +99,29 @@ def alert_mcu_setup_completion(thread_id, _):
     _mcu_setup_status[thread_id] = True
 
 
-def update_device_attr(thread_id, pkt):
-    """Update a device instance's attribute"""
+def update_device_attr_comp(thread_id, pkt):
+    """Update a device instance's attribute in the computer"""
 
     # Get pkt info
     tracker_id = pkt[0]
     device_id = pkt[1]
     attr_id = pkt[2]
     attr_type = pkt[3]
+    value_pkt = pkt[4:]
 
-    # Update device attribute value
-    try:
-        value = struct.unpack(attr_type, pkt[4:])
-        tracker = devices.DeviceTracker.get_tracker(tracker_id=tracker_id)
-        tracker.update_device_attr(attr_id, device_id, thread_id, value)
-    except struct.error:
-        pass
+    devices.DeviceTracker.update_device_attr_comp(tracker_id, attr_id, device_id, thread_id,
+                                                  attr_type, value_pkt)
+
+
+def update_device_attr_mcu(tracker_name, device_name, attr_name, attr_type, value):
+    """Update a device instance's attribute on an MCU"""
+
+    update_info = devices.DeviceTracker.update_device_attr_mcu(tracker_name, device_name,
+                                                               attr_name, attr_type, value)
+
+    if update_info is not None:
+        scheduler, pkt = update_info
+        scheduler.schedule_normal_task(UPDATE_DEVICE_ATTR_MCU, pkt)
 
 
 # Task helpers

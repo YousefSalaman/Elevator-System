@@ -22,7 +22,7 @@ class BaseMessenger(metaclass=abc.ABCMeta):
     """Helper object that listens and writes to the MCUs
 
     It establishes a connection between the main computer and the MCUs
-    connected to it. There's a thead and scheduler for each messenger
+    connected to it. There's a thread and scheduler for each messenger
     object that is created, where each thread runs the listening
     portion of the scheduler, so information can be processed in
     parallel for multiple MCUs. One can write into a specific MCU by
