@@ -9,6 +9,7 @@
 
 #include <fsm.h>
 #include <list.h>
+#include <devices.h>
 #include <scheduler.h>
 
 
@@ -18,21 +19,42 @@ extern "C" {
 
 /* Elevator constants */
 
-#define ELEVATOR_STATE_CNT 5
+#define ELEVATOR_TRACKER 0    // Tracker id in the device system
+#define ELEVATOR_STATE_CNT 5  // Total number of unique states in the elevator's FSM
+
+// Elevator parameters
+#define ELEVATOR_MAX_TEMP   120   // Maximum temperature an elevator car can reach
+#define ELEVATOR_MIN_TEMP   50    // Minimum temperature an elevator car can reach
+#define ELEVATOR_CAPACITY   10    // The max amount of people that can be stored
+#define ELEVATOR_MAX_WEIGHT 1200  // The maximum allowed weight
+#define ELEVATOR_COUNT      2     // The amount of elevators present in this device
+
+/**General return codes
+ * 
+ * Return codes that are shared by all the tasks in the
+ * elevator system for the Arduino.
+ */ 
+
+#define INVALID_CAR_INDEX 255  // Return code for serial rx callbacks that signifies an invalid elevator car index was given
+
+// Offsets for payload processing in serial callback
+
+#define CAR_INDEX_OFFSET 0    // Offset for the index of the car
+#define CAR_PAYLOAD_OFFSET 1  // Offset for the payload data
 
 // Elevator attributes that can be updated in the manager
 
 enum updatable_attrs
 {
-    UPDATE_CURRENT_ELEVATOR,
-    UPDATE_CAPACITY,
-    UPDATE_TEMPERATURE,
-    UPDATE_FLOOR,
-    UPDATE_WEIGHT,
     UPDATE_DOOR_STATUS,
-    UPDATE_LIGHT_STATUS,
-    UPDATE_MOVEMENT_STATE,
+    UPDATE_FLOOR,
     UPDATE_MAINTENANCE_STATUS,
+    UPDATE_MOVEMENT_STATE,
+    UPDATE_LIGHT_STATUS,
+    UPDATE_TEMPERATURE,
+    UPDATE_WEIGHT,
+    UPDATE_CURRENT_ELEVATOR,
+    UPDATE_CAPACITY
 };
 
 
@@ -263,18 +285,14 @@ extern state_t * elevator_states[];
 */
 #define floor_was_requested(car, floor) get_list_length(car->attrs.riders[floor]) != 0
 
-
 // Set the elevator to move on a specific direction
 #define set_elevator_movement(car, move) car->attrs.move = move
-
 
 // Shorthand for running an elevator's state machine
 #define run_elevator(car) run_fsm(&(car)->behavior, (car))
 
-
 // Shorthand for verifying if elevator is currently performing an action
 #define elevator_performing_action(car) car->attrs.action_started
-
 
 // Specify if the elevator is performing an action or not
 #define set_elevator_action(car, action) car->attrs.action_started = action
@@ -284,8 +302,8 @@ extern state_t * elevator_states[];
 
 
 // Update elevator object attributes in manager
-// TODO: Add elevator index or something to identify it 
-#define update_elevator_attr(car_index, type, value)       schedule_normal_task(UPDATE_ELEVATOR_ATTRIBUTE, ((uint8_t []){car_index, type, value}), 3)
+
+#define update_elevator_attr(car_index, attr_id, value)       schedule_normal_task(UPDATE_ELEVATOR_ATTRIBUTE, ((uint8_t []){ELEVATOR_TRACKER, car_index, attr_id, ATTR_UINT8_T, value}), 5)
 
 
 #define update_elevator_capacity(car_index, car)           update_elevator_attr(car_index, UPDATE_CAPACITY, (car)->attrs.riders != NULL)
@@ -298,21 +316,12 @@ extern state_t * elevator_states[];
 
 #define _get_weight_part(car, index) ((uint8_t *) (&(car)->state.weight))[index]  // Private macro to correctly access the weight attribute of the elevator
 
-#define update_elevator_weight(car_index, car)             schedule_normal_task(UPDATE_ELEVATOR_ATTRIBUTE, ((uint8_t []){car_index, UPDATE_WEIGHT, _get_weight_part(car, 0), _get_weight_part(car, 1)}), 4)
-
-
-// Functions that will be callable by the computer
-
-void set_floor(uint8_t car_index, uint8_t * floor);
-void set_weight(uint8_t car_index, uint8_t * weight);
-void set_door_state(uint8_t car_index, uint8_t * state);
-void set_temperature(uint8_t car_index, uint8_t * temp);
-void set_light_state(uint8_t car_index, uint8_t * state);
-void set_maintanence_state(uint8_t car_index, uint8_t * status);
+#define update_elevator_weight(car_index, car)             schedule_normal_task(UPDATE_ELEVATOR_ATTRIBUTE, ((uint8_t []){ELEVATOR_TRACKER, car_index, UPDATE_WEIGHT, ATTR_UINT16_T, _get_weight_part(car, 0), _get_weight_part(car, 1)}), 6)
 
 
 // Functions meant to be used internally by the Arduino
 
+void init_elevators(uint8_t count);
 void deinit_elevator(elevator_t * car);
 uint8_t find_next_floor(elevator_t * car);
 state_t * get_elevator_state(uint8_t state_id);
@@ -320,7 +329,7 @@ void enter_elevator(uint8_t car_index, uint8_t * attrs);
 void exit_elevator(elevator_t * car, uint8_t car_index);
 void move_elevator(elevator_t * car, uint8_t car_index);
 void request_elevator(uint8_t car_index, uint8_t * p_floor);
-void set_elevator_attrs(uint8_t car_index, char ** floor_names, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight);
+void set_elevator_attrs(uint8_t car_index, const char ** floor_names, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight);
 
 
 /* Elevator subsystem methods */

@@ -36,8 +36,8 @@ static device_tracker_t * trackers;  // Tracker array to access trackers
 /* Device private function prototypes */
 
 static void update_device_attr_mcu(uint8_t * pkt);
-static size_t pass_name_to_pkt(uint8_t * buf, size_t buf_size, char * name);
-static bool setup_device_tracker(uint8_t , uint8_t , size_t , deinit_dev_cb , set_dev_attr_cb );
+static size_t pass_name_to_pkt(uint8_t * buf, size_t buf_size, const char * name);
+static bool setup_device_tracker(uint8_t , uint8_t , deinit_dev_cb , set_dev_attr_cb );
 
 
 /* Device macro helper functions */
@@ -74,7 +74,7 @@ void init_device_trackers(uint8_t count)
 }
 
 // Pass the platform name to the computer
-void register_platform(char * platform_name)
+void register_platform(const char * platform_name)
 {
     if (get_init_verifier_bit(0, INIT_PLATFORM_OFFSET))
     {
@@ -100,14 +100,14 @@ void register_platform(char * platform_name)
 }
 
 // Setup a device tracker in the MCU and create it on the main computer
-void register_device_tracker(char * name, uint8_t tracker_id, uint8_t device_count, size_t device_size, deinit_dev_cb deinit_cb, set_dev_attr_cb set_attr_cb)
+void register_device_tracker(const char * name, uint8_t tracker_id, uint8_t device_count, deinit_dev_cb deinit_cb, set_dev_attr_cb set_attr_cb)
 {
     if (get_init_verifier_bit(tracker_id, PASS_PLATFORM_OFFSET))
     {
         uint8_t pkt[STR_NAME_LIMIT];
         size_t name_len = pass_name_to_pkt(pkt, STR_NAME_LIMIT, name);
 
-        if (name_len && setup_device_tracker(tracker_id, device_count, device_size, deinit_cb, set_attr_cb))
+        if (name_len && setup_device_tracker(tracker_id, device_count, deinit_cb, set_attr_cb))
         {
             schedule_normal_task(REGISTER_TRACKER, pkt, name_len);
             set_init_verifier_bit(tracker_id, CREATE_TRACKER_OFFSET);
@@ -130,7 +130,7 @@ void register_device_tracker(char * name, uint8_t tracker_id, uint8_t device_cou
  * array, so it would be wise to mark these down to create the
  * set_attr_cb for a device tracker.
  */ 
-void add_device_attributes(uint8_t tracker_id, char * attrs[], uint8_t array_size)
+void add_device_attributes(uint8_t tracker_id, const char * attrs[], uint8_t array_size)
 {
     if (get_init_verifier_bit(tracker_id, CREATE_TRACKER_OFFSET))
     {
@@ -147,7 +147,7 @@ void add_device_attributes(uint8_t tracker_id, char * attrs[], uint8_t array_siz
             // Exit loop if name does not comply with limits
             if (!name_len)
             {
-                goto failed_attr_pass;
+                // goto failed_attr_pass;
             }
 
             schedule_normal_task(ADD_DEVICE_ATTR, pkt, 2 + STR_NAME_LIMIT);  // Pass attr name to comp
@@ -157,8 +157,7 @@ void add_device_attributes(uint8_t tracker_id, char * attrs[], uint8_t array_siz
         return ;
     }
 
-    failed_attr_pass:
-
+    // failed_attr_pass:
     // Add some stuff in here for handling this
 }
 
@@ -169,13 +168,12 @@ void create_device_instances(uint8_t tracker_id)
     {
         device_tracker_t * tracker = get_tracker(tracker_id);
 
-        tracker->devices = malloc(tracker->count * sizeof(device_t));
         if (tracker->devices != NULL)
         {
             // Partially setup device object
             for (uint8_t i = 0; i < tracker->count; i++)
             {
-                device_t * device = tracker->devices + i;
+                device_t * device = &tracker->devices[i];
                 device->device_id = i;
                 device->tracker_id = tracker_id;
             }
@@ -209,16 +207,15 @@ device_tracker_t * get_tracker(uint8_t tracker_id)
 }
 
 // Registers a task in the MCU and sends the name to the computer
-void register_device_task(char * name, uint8_t id, uint8_t payload_size, task_t task, uint8_t priority_type)
+void _register_device_task(const char * name, uint8_t id, uint8_t payload_size, task_t task, uint8_t priority_type)
 {
     size_t name_len;
     uint8_t pkt[2 + STR_NAME_LIMIT];
 
     pkt[0] = id;
     pkt[1] = priority_type;
-    name_len = pass_name_to_pkt(pkt + 2, STR_NAME_LIMIT, name);
-
-    if (name_len)
+    
+    if (name_len = pass_name_to_pkt(pkt + 2, STR_NAME_LIMIT, name))
     {
         schedule_normal_task(REGISTER_DEVICE, pkt, name_len + 2);
         register_task(id, payload_size, task);
@@ -227,6 +224,14 @@ void register_device_task(char * name, uint8_t id, uint8_t payload_size, task_t 
     {
 
     }
+}
+
+// Check if the device was initialized correctly
+bool device_initialized(uint8_t tracker_id)
+{
+    device_tracker_t * tracker = get_tracker(tracker_id);
+
+    return (tracker_id < tracker->count)? get_init_verifier_bit(tracker_id, CREATE_DEVICES_OFFSET): false;
 }
 
 /**Null destructor callback
@@ -256,7 +261,7 @@ static void update_device_attr_mcu(uint8_t * pkt)
 }
 
 // Helper function to pass a string to a pkt
-static size_t pass_name_to_pkt(uint8_t * buf, size_t buf_size, char * name)
+static size_t pass_name_to_pkt(uint8_t * buf, size_t buf_size, const char * name)
 {
     size_t name_len = strlen(name);
     if (name_len <= (size_t) STR_NAME_LIMIT && name_len <= buf_size)
@@ -264,17 +269,16 @@ static size_t pass_name_to_pkt(uint8_t * buf, size_t buf_size, char * name)
         memcpy(buf, name, name_len);
         return name_len;
     }
-
     return 0;
 }
 
 // Setup for a specific device tracker
-static bool setup_device_tracker(uint8_t tracker_id, uint8_t device_count, size_t device_size, deinit_dev_cb deinit_cb, set_dev_attr_cb set_attr_cb)
+static bool setup_device_tracker(uint8_t tracker_id, uint8_t device_count, deinit_dev_cb deinit_cb, set_dev_attr_cb set_attr_cb)
 {   
     device_tracker_t * tracker = get_tracker(tracker_id);
     if (tracker != NULL)
     {
-        tracker->devices = malloc(device_size * device_count);
+        tracker->devices = malloc(sizeof(device_t) * device_count);
         if (tracker->devices != NULL)
         {
             // Setup tracker attributes

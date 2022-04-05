@@ -9,17 +9,47 @@
 #define FLOOR_NAME_HEADER 2
 #define FLOOR_NAME_LIMIT 10
 
+/* Elevator group global variables */
+
+static elevator_t * elevators;
+
 /* Elevator function prototypes*/
 
+static void create_elevators(void);
+static void update_elevator_attrs(uint8_t * pkt);
 static uint8_t find_requested_floors(elevator_t * car);
 static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacity);
-static void pass_elevator_names(char ** floor_names, uint8_t floor_count, uint8_t car_index);
+static void pass_elevator_names(const char ** floor_names, uint8_t floor_count, uint8_t car_index);
+static void deinit_elevators(device_t * dev_elevators, uint8_t count);
+static void set_floor(uint8_t car_index, uint8_t * floor);
+static void set_weight(uint8_t car_index, uint8_t * weight);
+static void set_temperature(uint8_t car_index, uint8_t * temp);
+static void set_door_state(uint8_t car_index, uint8_t * state);
+static void set_light_state(uint8_t car_index, uint8_t * state);
+static void set_maintanence_state(uint8_t car_index, uint8_t * status);
+
 
 
 /* Public system elevator functions */
 
+// Initialize elevator subsystem
+void init_elevators(uint8_t count)
+{
+    char * elevator_attrs[] = {"door_state", "floor", "maintanence_state", "light_state", "temperature", "weight"};
+
+    // General elevator setup
+    register_device_tracker("elevator", ELEVATOR_TRACKER, count, deinit_elevators, update_elevator_attrs);
+    add_device_attributes(ELEVATOR_TRACKER, elevator_attrs, 6);
+    create_device_instances(ELEVATOR_TRACKER);
+    create_elevators();
+
+    // Register elevator tasks
+    register_device_task("enter_elevator", ENTER_ELEVATOR, 3, enter_elevator, false);
+    register_device_task("request_elevator", REQUEST_ELEVATOR, 2, request_elevator, false);
+}
+
 // Set up attributes for elevator object
-void set_elevator_attrs(uint8_t car_index, char ** floor_names, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight)
+void set_elevator_attrs(uint8_t car_index, const char ** floor_names, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight)
 {
     elevator_t * car = get_elevator(car_index);
 
@@ -85,7 +115,7 @@ void deinit_elevator(elevator_t * car)
  * These functions are meant to be used by the elevator manager to
  * administer the elevator objects or by other parts of the Arduino
  * code to perform state-specific actions.
-*/
+ */
 
 
 /**A person enters an elevator
@@ -109,7 +139,7 @@ void deinit_elevator(elevator_t * car)
  * This function assumes the manager requested this floor beforehand
  * and that this function will be called when the elevator reaches
  * said floor.
-*/
+ */
 void enter_elevator(uint8_t car_index, uint8_t * attrs)
 {
     elevator_t * car = get_elevator(car_index);
@@ -143,6 +173,12 @@ void enter_elevator(uint8_t car_index, uint8_t * attrs)
     }
 }
 
+
+// Checks if the elevator initializer ran correctly
+bool elevator_initialized(void)
+{
+    return device_initialized(ELEVATOR_TRACKER);
+}
 
 /**People exit the elevator
  * 
@@ -185,6 +221,14 @@ void exit_elevator(elevator_t * car, uint8_t car_index)
     update_elevator_temp(car_index, car);
     update_elevator_weight(car_index, car);
     update_elevator_capacity(car_index, car);
+}
+
+
+// Fetch an elevator object from the elevator array
+elevator_t * get_elevator(uint8_t index)
+{
+    device_tracker_t * tracker = get_tracker(ELEVATOR_TRACKER);
+    return (index < tracker->count)? get_device(tracker, index): NULL;
 }
 
 
@@ -270,78 +314,35 @@ void request_elevator(uint8_t car_index, uint8_t * p_floor)
 }
 
 
-/**Elevator object functions
- * 
- * These functions are meant to directly control the states of 
- * the elevator functions and will most likely be called through
- * another device connected to the Arduino.
-*/
-
-
-// Set the light on the elevator to a specific state
-void set_light_state(uint8_t car_index, uint8_t * state)
+// Run all the elevators in the device
+void run_elevators(void)
 {
-    elevator_t * car = get_elevator(car_index);
+    device_tracker_t * tracker = get_tracker(ELEVATOR_TRACKER);
 
-    car->state.is_light_on = (*state > 0);
-    update_elevator_light_status(car_index, car);
-}
-
-
-// Set the door of the elevator to a specific state
-void set_door_state(uint8_t car_index, uint8_t * state)
-{
-    elevator_t * car = get_elevator(car_index);
-
-    car->state.is_door_open = (*state > 0);
-    update_elevator_door_status(car_index, car);
-}
-
-
-// Set the elevator to a specfic floor
-void set_floor(uint8_t car_index, uint8_t * floor)
-{
-    elevator_t * car = get_elevator(car_index);
-
-    if (*floor && *floor <= car->limits.floor)
+    for (uint8_t i = 0; i < tracker->count; i++)
     {
-        car->state.floor = *floor;
-        update_elevator_floor(car_index, car);
+        run_elevator(&elevators[i]);
     }
 }
 
 
-// Set the elevator's car to a specific temperature
-void set_temperature(uint8_t car_index, uint8_t * temp)
-{
-    elevator_t * car = get_elevator(car_index);
-
-    car->state.temp = *temp;
-    update_elevator_temp(car_index, car);
-}
-
-
-// Set the load in the elevator to a specific weight
-void set_weight(uint8_t car_index, uint8_t * weight)
-{
-    elevator_t * car = get_elevator(car_index);
-
-    car->state.weight = *weight;
-    update_elevator_weight(car_index, car);
-}
-
-
-// Set the elevator's car to a specific temperature
-void set_maintanence_state(uint8_t car_index, uint8_t * status)
-{
-    elevator_t * car = get_elevator(car_index);
-
-    car->attrs.maintenance_needed = *status;
-    update_elevator_maintenance_status(car_index, car);
-}
-
-
 /* Private elevator functions */
+
+// Creates the elevator object array
+static void create_elevators(void)
+{
+    device_tracker_t * tracker = get_tracker(ELEVATOR_TRACKER);
+    elevators = malloc(sizeof(elevator_t) * tracker->count);
+
+    if (elevators != NULL)
+    {
+        device_t * dev_elevators = tracker->devices;
+        for (uint8_t i = 0; i < tracker->count; i++)
+        {
+            dev_elevators[i].device = &elevators[i];
+        }
+    }
+}
 
 // Initialize miscellaneous attributes for the elevator object
 static car_attrs_t init_misc_elevator_attrs(uint8_t floor_count, uint8_t capacity)
@@ -441,7 +442,7 @@ static uint8_t find_requested_floors(elevator_t * car)
 
 
 // Pass the floor names to the computer
-static void pass_elevator_names(char ** floor_names, uint8_t floor_count, uint8_t car_index)
+static void pass_elevator_names(const char ** floor_names, uint8_t floor_count, uint8_t car_index)
 {
     size_t name_len;
     char name_pkt[FLOOR_NAME_LIMIT + FLOOR_NAME_HEADER];
@@ -464,4 +465,116 @@ static void pass_elevator_names(char ** floor_names, uint8_t floor_count, uint8_
 
         schedule_normal_task(PASS_ELEVATOR_FLOOR_NAME, name_pkt, FLOOR_NAME_HEADER + name_len);
     }
+}
+
+
+// Set elevator attributes
+static void update_elevator_attrs(uint8_t * pkt)
+{
+    // Get corresponding elevator
+    uint8_t car_index = pkt[0];
+    uint8_t attr_id = pkt[1];
+
+    // Set correnposding attribute for given elevator
+    switch (attr_id)
+    {
+        case UPDATE_LIGHT_STATUS:
+            set_light_state(car_index, &pkt[3]);
+            break;
+        
+        case UPDATE_DOOR_STATUS:
+            set_door_state(car_index, &pkt[3]);
+            break;
+        
+        case UPDATE_FLOOR:
+            set_floor(car_index, &pkt[3]);
+            break;
+        
+        case UPDATE_TEMPERATURE:
+            set_temperature(car_index, &pkt[3]);
+            break;
+
+        case UPDATE_WEIGHT:
+            set_weight(car_index, &pkt[3]);
+            break;
+        
+        case UPDATE_MAINTENANCE_STATUS:
+            set_maintanence_state(car_index, &pkt[3]);
+            break;
+    }
+}
+
+
+// Uninitialize objects related to the elevator subsystem
+static void deinit_elevators(device_t * _, uint8_t count)
+{
+    for (uint8_t i = 0; i < count; i++)
+    {
+        deinit_elevator(&elevators[i]);
+    }
+
+    free(elevators);
+}
+
+
+// Set the light on the elevator to a specific state
+static void set_light_state(uint8_t car_index, uint8_t * state)
+{
+    elevator_t * car = get_elevator(car_index);
+
+    car->state.is_light_on = (*state > 0);
+    update_elevator_light_status(car_index, car);
+}
+
+
+// Set the door of the elevator to a specific state
+static void set_door_state(uint8_t car_index, uint8_t * state)
+{
+    elevator_t * car = get_elevator(car_index);
+
+    car->state.is_door_open = (*state > 0);
+    update_elevator_door_status(car_index, car);
+}
+
+
+// Set the elevator to a specfic floor
+static void set_floor(uint8_t car_index, uint8_t * floor)
+{
+    elevator_t * car = get_elevator(car_index);
+
+    if (*floor && *floor <= car->limits.floor)
+    {
+        car->state.floor = *floor;
+        update_elevator_floor(car_index, car);
+    }
+}
+
+
+// Set the elevator's car to a specific temperature
+static void set_temperature(uint8_t car_index, uint8_t * temp)
+{
+    elevator_t * car = get_elevator(car_index);
+
+    car->state.temp = *temp;
+    update_elevator_temp(car_index, car);
+}
+
+
+// Set the load in the elevator to a specific weight
+static void set_weight(uint8_t car_index, uint8_t * weight)
+{
+    elevator_t * car = get_elevator(car_index);
+
+    car->state.weight = *weight;
+    update_elevator_weight(car_index, car);
+}
+
+
+// Set the elevator's car to a specific temperature
+static void set_maintanence_state(uint8_t car_index, uint8_t * status)
+{
+    elevator_t * car = get_elevator(car_index);
+
+    car->attrs.maintenance_needed = *status;
+    update_elevator_maintenance_status(car_index, car);
 }

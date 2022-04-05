@@ -23,13 +23,25 @@ extern "C" {
 #define UPDATE_DEVICE_ATTR_COMP 249
 #define UPDATE_DEVICE_ATTR_MCU  248
 
+// Attribute type constants
+
+#define ATTR_SIZE_T      PRINT_SIZE_T    // Sends size_t variable
+#define ATTR_SSIZE_T     PRINT_SSIZE_T   // Sends ssize_t variable
+#define ATTR_INT8_T      PRINT_INT8_T    // Sends signed char and expects 1 byte
+#define ATTR_UINT8_T     PRINT_UINT8_T   // Sends unsigned char and expects 1 byte
+#define ATTR_INT16_T     PRINT_INT16_T   // Sends signed short and expects 2 bytes
+#define ATTR_UINT16_T    PRINT_UINT16_T  // Sends unsigned short and expects 2 bytes
+#define ATTR_INT32_T     PRINT_INT32_T   // Sends signed integer and expects 4 bytes
+#define ATTR_UINT32_T    PRINT_UINT32_T  // Sends unsigned integer and expects 4 bytes
+#define ATTR_INT64_T     PRINT_INT64_T   // Sends signed long long and expects 8 bytes
+#define ATTR_UINT64_T    PRINT_UINT64_T  // Sends unsigned long long and expects 8 bytes
+#define ATTR_FLOAT16_T   PRINT_FLOAT16_T // Sends half-precision float and expects 2 bytes
+#define ATTR_FLOAT32_T   PRINT_FLOAT32_T // Sends single-precision float and expects 4 bytes
+#define ATTR_FLOAT64_T   PRINT_FLOAT64_T // Sends double-precision float and expects 8 bytes
+#define ATTR_BOOL        PRINT_BOOL      // Sends the correspoding boolean value and expects 1 byte
+#define ATTR_CHAR        PRINT_CHAR      // Sends the corresponding ASCII/Unicode character and expects 1 byte
 
 /* Device objects and helper types */
-
-typedef void (*set_dev_attr_cb) (uint8_t *);
-
-typedef void (*deinit_dev_cb) (device_t *, uint8_t);
-
 
 /**Device container object
  * 
@@ -46,6 +58,11 @@ typedef struct
     uint8_t tracker_id;
     
 } device_t;
+
+
+typedef void (*set_dev_attr_cb) (uint8_t *);
+
+typedef void (*deinit_dev_cb) (device_t *, uint8_t);
 
 
 /**Device tracker object
@@ -68,21 +85,28 @@ typedef struct
 
 /* Device methods */
 
-// Alert setup completion to the computer
-#define alert_setup_completion() schedule_normal_task(ALERT_SETUP_COMPLETION, (uint8_t []){0}, sizeof(uint8_t))
-
 // Shorthand to extract device_t obj from the device tracker with a given device id
-#define get_device_obj(device_tracker, device_id) (device_tracker).devices[device_id]
+#define get_device_obj(device_tracker, device_id) (device_tracker)->devices[device_id]
 
 // Shorthand to extract and cast a specific device object from a device tracker
-#define get_device(device_type, device_tracker, device_id) (device_type *) ((device_tracker).devices[device_id].device)
+#define get_device(device_tracker, device_id) (device_tracker)->devices[device_id].device
+
+// Setup device methods
 
 void init_device_trackers(uint8_t count);
-void register_platform(char * platform_name);
-void register_device_tracker(char * name, uint8_t tracker_id, uint8_t device_count, size_t device_size, deinit_dev_cb deinit_cb, set_dev_attr_cb set_attr_cb);
-void add_device_attributes(uint8_t tracker_id, char * attrs[], uint8_t array_size);
-void register_device_task(char * name, uint8_t id, uint8_t payload_size, task_t task, uint8_t priority_type);
+void register_platform(const char * platform_name);
+void register_device_tracker(const char * name, uint8_t tracker_id, uint8_t device_count, deinit_dev_cb deinit_cb, set_dev_attr_cb set_attr_cb);
+void add_device_attributes(uint8_t tracker_id, const char * attrs[], uint8_t array_size);
+void create_device_instances(uint8_t tracker_id);
+void _register_device_task(const char * name, uint8_t id, uint8_t payload_size, task_t task, uint8_t priority_type);
+
+#define alert_setup_completion() schedule_normal_task(ALERT_SETUP_COMPLETION, NULL, 0)  // Alert setup completion to the computer
+#define register_device_task(name, id, payload_size, task, priority_type) _register_device_task(name, id, payload_size, (task_t) task, priority_type)
+
+// Miscellaneous device methods
+
 void deinit_devices(void);
+bool device_initialized(uint8_t tracker_id);
 device_tracker_t * get_tracker(uint8_t tracker_id);
 void deinit_null_cb(device_t * , uint8_t );
 void set_null_attr_cb(uint8_t * );
