@@ -64,7 +64,7 @@ class Node:
 
         return cls._entries
 
-    def is_tree_leaf(self):
+    def is_leaf(self):
         """Verifies if the current node does not have any children"""
 
         return len(self.children) == 0

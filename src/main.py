@@ -22,15 +22,16 @@ and it will delete every node in the cli.
 
 from __future__ import print_function
 
-from config import setup, tasks
-from tools import cli, messengers
+from Python.tools import cli, messengers
+from Python.config import setup, tasks, teardown
 
 
 if __name__ == "__main__":
 
     # Initial setup phase
     setup.setup_mcu_channels()
-    while not tasks.is_mcu_setup_complete():
+    setup.define_default_scheduler_tasks()
+    while cli.Node.get_root_node() is None:
         pass
 
     # Final setup phase
@@ -38,6 +39,7 @@ if __name__ == "__main__":
     setup.define_interface_cmds()
     setup.import_platform(cli.Node.get_root_node().name)
     cli.Node.link_unlinked_nodes()
+    messengers.SerialMessenger.schedule_to_all_mcus(tasks.COMP_SETUP_COMPLETION, bytearray(1), messengers.FAST)
 
     # Run cli program
     while cli.is_running():
@@ -45,5 +47,6 @@ if __name__ == "__main__":
         cli.Command.run_command()
 
     # Teardown phase
-    messengers.SerialMessenger.close_channels()
+    teardown.platform_exit()
+    messengers.SerialMessenger.close_messengers()
     cli.Node.reset_tree()

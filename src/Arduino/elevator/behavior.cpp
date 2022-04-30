@@ -54,6 +54,7 @@ static void emergency_run(void * args)
         // Send updated states to manager
         update_elevator_door_status(car_index, car);
         update_elevator_light_status(car_index, car);
+        update_elevator_emergency_status(car_index, car);
     }
 }
 
@@ -66,6 +67,7 @@ static uint8_t emergency_change(void * args)
     if (elevator_within_limits(car))
     {
         car->attrs.action_started = END_ACTION;
+        update_elevator_emergency_status(car_index, car);
         return IDLE;
     }
     return EMERGENCY;
@@ -112,6 +114,7 @@ static void moving_run(void * args)
             car->attrs.move = STOP;  
             exit_elevator(car, car_index);  // Get people out of the elevator
 
+            update_elevator_next_floor(car_index, car);
             update_elevator_movement_state(car_index, car);
         }
         car->attrs.action_started = END_ACTION;
@@ -136,6 +139,7 @@ static uint8_t moving_change(void * args)
 
     if (car->attrs.move == STOP)
     {
+        alert_floor_arrival(car_index, car->state.floor);
         return IDLE;
     }
 
@@ -187,9 +191,10 @@ static void idle_run(void * args)
 
 static uint8_t idle_change(void * args)
 {
-    elevator_t * car = args;
-    uint8_t next_state = IDLE;
+    uint8_t car_index = *(uint8_t *) args;
+    elevator_t * car = get_elevator(car_index);
 
+    uint8_t next_state = IDLE;
     if (!elevator_within_limits(car))
     {
         next_state = EMERGENCY;
@@ -201,6 +206,7 @@ static uint8_t idle_change(void * args)
     else if (car->attrs.next_floor && !car->state.is_door_open)
     {
         next_state = MOVING;
+        remove_elevator_from_floor(car_index, car->state.floor);
     }
     
     // If the next state is not idle, then end the idle action

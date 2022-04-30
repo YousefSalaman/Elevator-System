@@ -35,17 +35,17 @@ static void set_maintanence_state(uint8_t car_index, uint8_t * status);
 // Initialize elevator subsystem
 void init_elevators(uint8_t count)
 {
-    char * elevator_attrs[] = {"door_state", "floor", "maintanence_state", "light_state", "temperature", "weight"};
+    const char * elevator_attrs[] = {"capacity", "current_floor", "door_state", "emergency_state", "floors", "maintanence_state", "movement", "next_floor", "light_state", "temperature", "weight"};
 
     // General elevator setup
     register_device_tracker("elevator", ELEVATOR_TRACKER, count, deinit_elevators, update_elevator_attrs);
-    add_device_attributes(ELEVATOR_TRACKER, elevator_attrs, 6);
+    add_device_attrs(ELEVATOR_TRACKER, elevator_attrs, 11);
     create_device_instances(ELEVATOR_TRACKER);
     create_elevators();
 
     // Register elevator tasks
-    register_device_task("enter_elevator", ENTER_ELEVATOR, 3, enter_elevator, false);
-    register_device_task("request_elevator", REQUEST_ELEVATOR, 2, request_elevator, false);
+    register_device_task("enter_elevator", ENTER_ELEVATOR, 3, enter_elevator, NORMAL);
+    register_device_task("request_elevator", REQUEST_ELEVATOR, 2, request_elevator, NORMAL);
 }
 
 // Set up attributes for elevator object
@@ -88,13 +88,14 @@ void set_elevator_attrs(uint8_t car_index, const char ** floor_names, uint8_t fl
         memcpy(car, &car_copy, sizeof(elevator_t));
 
         // Send initialized data to the computer
-
         update_elevator_temp(car_index, car);
         update_elevator_floor(car_index, car);
         update_elevator_weight(car_index, car);
         update_elevator_capacity(car_index, car);
+        update_elevator_next_floor(car_index, car);
         update_elevator_light_status(car_index, car);
         update_elevator_movement_state(car_index, car);
+        update_elevator_emergency_status(car_index, car);
 
         pass_elevator_names(floor_names, floor_count, car_index);
     }
@@ -117,6 +118,10 @@ void deinit_elevator(elevator_t * car)
  * code to perform state-specific actions.
  */
 
+void alert_comp_elevator(uint8_t attr_id, uint8_t car_index, uint8_t floor)
+{
+    schedule_normal_task(attr_id, ((uint8_t []){car_index, floor}), sizeof(uint8_t) * 2);
+}
 
 /**A person enters an elevator
  * 
@@ -124,7 +129,7 @@ void deinit_elevator(elevator_t * car)
  * elevator is stored and the elevator's state is updated with this 
  * new information. 
  * 
- * This is done to keep track of the values thatcare changing in the
+ * This is done to keep track of the values that are changing in the
  * elevator, so when a person "exits" the elevator, the values related
  * to that person are also substracted.
  * 
@@ -166,19 +171,14 @@ void enter_elevator(uint8_t car_index, uint8_t * attrs)
         car->state.temp += temp;
         car->state.weight += weight;
 
-        // Send new states to manager
+        // Send new states to manager and alert user a person has been added
         update_elevator_temp(car_index, car);
         update_elevator_weight(car_index, car);
         update_elevator_capacity(car_index, car);
+        alert_person_addition(car_index, floor);
     }
 }
 
-
-// Checks if the elevator initializer ran correctly
-bool elevator_initialized(void)
-{
-    return device_initialized(ELEVATOR_TRACKER);
-}
 
 /**People exit the elevator
  * 
@@ -209,6 +209,8 @@ void exit_elevator(elevator_t * car, uint8_t car_index)
         // Update parameters in system
         car->state.temp -= person->temp;
         car->state.weight -= person->weight;
+
+        alert_person_removal(car_index, car->state.floor);
     }
 
     // Remove people from elevator at current floor
@@ -287,7 +289,7 @@ uint8_t find_next_floor(elevator_t * car)
 void request_elevator(uint8_t car_index, uint8_t * p_floor)
 {
     elevator_t * car = get_elevator(car_index);
-
+    schedule_fast_task(130, EXTERNAL_TASK, "requesting elevs", 16);
     if (*p_floor && *p_floor <= car->limits.floor)
     {
         uint8_t floor = *p_floor - 1;
@@ -295,6 +297,7 @@ void request_elevator(uint8_t car_index, uint8_t * p_floor)
         // Assign an empty rider if one hasn't been placed already on requested floor
         if (car->attrs.pressed_floors[floor] == NULL)
         {
+            schedule_fast_task(130, EXTERNAL_TASK, "placing empty rider", 19);
             person_t * rider = car->attrs.riders->item;
 
             rider->weight = 0; 
@@ -308,6 +311,9 @@ void request_elevator(uint8_t car_index, uint8_t * p_floor)
         {
             car->attrs.next_floor = *p_floor;
             car->attrs.move = (car->state.floor > car->attrs.next_floor)? DOWN: UP;
+            
+            schedule_fast_task(130, EXTERNAL_TASK, "assigned next floor", 19);
+            update_elevator_next_floor(car_index, car);
             update_elevator_movement_state(car_index, car);
         }
     }
@@ -317,12 +323,90 @@ void request_elevator(uint8_t car_index, uint8_t * p_floor)
 // Run all the elevators in the device
 void run_elevators(void)
 {
-    device_tracker_t * tracker = get_tracker(ELEVATOR_TRACKER);
-
-    for (uint8_t i = 0; i < tracker->count; i++)
+    if (is_comp_device_setup_complete(ELEVATOR_TRACKER))
     {
-        run_elevator(&elevators[i]);
+        device_tracker_t * tracker = get_tracker(ELEVATOR_TRACKER);
+
+        for (uint8_t i = 0; i < tracker->count; i++)
+        {
+            run_fsm(&elevators[i].behavior, &i);
+        }
     }
+}
+
+// Update elevator attribute in comp
+void update_comp_elevator_attr(uint8_t car_index, elevator_t * car, uint8_t attr_id)
+{
+    uint8_t pkt[6];
+    uint8_t pkt_size;
+
+    // Add default packet values
+    pkt[0] = ELEVATOR_TRACKER;
+    pkt[1] = car_index;
+    pkt[2] = attr_id;
+
+    // Add the rest of the packet values
+    if (attr_id == WEIGHT)  // For updating the weight attribute
+    {
+        pkt_size = 6;
+        pkt[3] = ATTR_UINT16_T;
+        memcpy(pkt + 4, &car->state.weight, sizeof(uint16_t));
+    }
+    else  // For updating everything else
+    {
+        pkt_size = 5;
+        pkt[3] = ATTR_UINT8_T;
+
+        switch (attr_id)
+        {
+            case CAPACITY:
+                pkt[4] = car->attrs.riders != NULL;
+                break;  
+
+            case TEMPERATURE:
+                pkt[4] = car->state.temp;
+                break;  
+            
+            case CURRENT_FLOOR:
+                pkt[4] = car->state.floor;
+                break;  
+            
+            case DOOR_STATE:
+                pkt[4] = car->state.is_door_open;
+                break;  
+            
+            case LIGHT_STATE:
+                pkt[4] = car->state.is_light_on;
+                break; 
+
+            case MAINTENANCE_STATE:
+                pkt[4] = car->attrs.maintenance_needed;
+                break;   
+
+            case MOVEMENT:
+                pkt[4] = car->attrs.move;
+                break;  
+            
+            case EMERGENCY_STATE:
+                pkt[4] = car->behavior.curr_state == car->behavior.states[EMERGENCY];
+                break;  
+            
+            case NEXT_FLOOR:
+                pkt[4] = car->attrs.next_floor;
+                break;
+        }
+    }
+    
+    schedule_fast_task(UPDATE_DEVICE_ATTR_COMP, EXTERNAL_TASK, pkt, pkt_size);
+
+//     if (is_comp_device_setup_complete(ELEVATOR_TRACKER))
+//     {
+//         schedule_normal_task(UPDATE_DEVICE_ATTR_COMP, pkt, pkt_size);
+//     }
+//     else
+//     {
+//         schedule_fast_task(UPDATE_DEVICE_ATTR_COMP, EXTERNAL_TASK, pkt, pkt_size);
+//     }
 }
 
 
@@ -450,7 +534,7 @@ static void pass_elevator_names(const char ** floor_names, uint8_t floor_count, 
     name_pkt[0] = car_index;  // Add the car index to the packet
     for (uint8_t i = 0; i < floor_count; i++)
     {
-        name_pkt[1] = i;  // Add floor number to packet
+        name_pkt[1] = i + 1;  // Add floor number to packet
 
         // Pass floor name to the packet
         name_len = strlen(floor_names[i]);
@@ -463,7 +547,7 @@ static void pass_elevator_names(const char ** floor_names, uint8_t floor_count, 
             name_len = strlen(itoa(i, &name_pkt[FLOOR_NAME_HEADER], 10));  // Uses the floor number as the floor name
         }
 
-        schedule_normal_task(PASS_ELEVATOR_FLOOR_NAME, name_pkt, FLOOR_NAME_HEADER + name_len);
+        schedule_fast_task(PASS_ELEVATOR_FLOOR_NAME, EXTERNAL_TASK, (uint8_t *) name_pkt, FLOOR_NAME_HEADER + name_len);
     }
 }
 
@@ -478,27 +562,27 @@ static void update_elevator_attrs(uint8_t * pkt)
     // Set correnposding attribute for given elevator
     switch (attr_id)
     {
-        case UPDATE_LIGHT_STATUS:
+        case LIGHT_STATE:
             set_light_state(car_index, &pkt[3]);
             break;
         
-        case UPDATE_DOOR_STATUS:
+        case DOOR_STATE:
             set_door_state(car_index, &pkt[3]);
             break;
         
-        case UPDATE_FLOOR:
+        case CURRENT_FLOOR:
             set_floor(car_index, &pkt[3]);
             break;
         
-        case UPDATE_TEMPERATURE:
+        case TEMPERATURE:
             set_temperature(car_index, &pkt[3]);
             break;
 
-        case UPDATE_WEIGHT:
+        case WEIGHT:
             set_weight(car_index, &pkt[3]);
             break;
         
-        case UPDATE_MAINTENANCE_STATUS:
+        case MAINTENANCE_STATE:
             set_maintanence_state(car_index, &pkt[3]);
             break;
     }
@@ -565,7 +649,7 @@ static void set_weight(uint8_t car_index, uint8_t * weight)
 {
     elevator_t * car = get_elevator(car_index);
 
-    car->state.weight = *weight;
+    memcpy(&car->state.weight, weight, sizeof(uint16_t));
     update_elevator_weight(car_index, car);
 }
 

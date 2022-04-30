@@ -108,7 +108,7 @@ class SchedulerPrinter:
             raise SchedulerPrinterError("No {} task printer entry was found with ".format(task_type) +
                                         "number {} has been registered, so message was not registered".format(task_id))
 
-        task_printer.register_msg(msg_number, msg, verbose)
+        task_printer.register_msg(msg_number, msg, task_id, verbose)
 
     def _register_task(self, task_name, task_type, task_id, *task_vars):
 
@@ -123,9 +123,11 @@ class SchedulerPrinter:
             raise SchedulerPrinterError("Task name must be a string")
 
         # Register task in printer
+        print(task_id)
         printer_entry = (task_type, task_id)
         if self._task_printers.get(printer_entry) is not None:
-            raise SchedulerPrinterError("A task with number {} has been registered in the printer".format(task_id))
+            raise SchedulerPrinterError("A task with number {} has already been registered"
+                                        " in the printer".format(task_id))
         self._task_printers[printer_entry] = _TaskPrinter(task_name, *task_vars)
 
     def _set_up_internal_task_printers(self):
@@ -135,8 +137,8 @@ class SchedulerPrinter:
         self._register_task("PRINT MESSAGE", constants.INTERNAL_TASK, constants.PRINT_MESSAGE)
         self._register_task("UNSCHEDULE TASK", constants.INTERNAL_TASK, constants.UNSCHEDULE_TASK)
         self._register_task("MODIFY PRINTER VARS", constants.INTERNAL_TASK, constants.MODIFY_PRINTER_VARS)
-        self._register_task("PKT DECODE", constants.INTERNAL_TASK, constants.INTERNAL_TASK,
-                            "expected pkt size", "received pkt size", "task number")
+        self._register_task("PKT DECODE", constants.INTERNAL_TASK, constants.PKT_DECODE,
+                            "expected_pkt_size", "receive_pkt_size", "task_number")
         self._register_task("PKT ENCODE", constants.INTERNAL_TASK, constants.PKT_ENCODE)
         self._register_task("TASK LOOKUP", constants.INTERNAL_TASK, constants.TASK_LOOKUP)
         self._register_task("TASK REGISTER", constants.INTERNAL_TASK, constants.TASK_REGISTER)
@@ -148,10 +150,10 @@ class SchedulerPrinter:
         self._register_msg(constants.INTERNAL_TASK, constants.PKT_DECODE,
                            "crc16 checksum fail", constants.CRC_CHECKSUM_FAIL)
         self._register_msg(constants.INTERNAL_TASK, constants.PKT_DECODE,
-                           "task with number {task number} was not registered", constants.CRC_CHECKSUM_FAIL)
+                           "task with number {task_number} was not registered", constants.TASK_NOT_REGISTERED)
         self._register_msg(constants.INTERNAL_TASK, constants.PKT_DECODE,
-                           "Expected {expected pkt size} byte(s) from the packet payload "
-                           "but received {received pkt size} byte(s) for task {task number}",
+                           "Expected {expected_pkt_size} byte(s) from the packet payload "
+                           "but received {received_pkt_size} byte(s) for task {task_number}",
                            constants.INCORRECT_PAYLOAD_SIZE)
 
     def _task_printer_exec(self, task_type, task_id, f_name, *args):
@@ -185,7 +187,7 @@ class _TaskPrinter:
       not.
     """
 
-    def __init__(self, name, task_vars):
+    def __init__(self, name, *task_vars):
 
         self.msgs = {}
         self.vars = []
@@ -198,6 +200,7 @@ class _TaskPrinter:
                 raise SchedulerPrinterError("Task printer variables cannot contain spaces. Use a "
                                             "valid python attribute name as the task variable name.")
             self.vars.append(task_var_strip)
+            setattr(self, task_var_strip, None)
 
         self._silent = False
 

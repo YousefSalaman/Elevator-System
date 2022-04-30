@@ -43,18 +43,19 @@ extern "C" {
 #define CAR_PAYLOAD_OFFSET 1  // Offset for the payload data
 
 // Elevator attributes that can be updated in the manager
-
-enum updatable_attrs
+enum elevator_attrs
 {
-    UPDATE_DOOR_STATUS,
-    UPDATE_FLOOR,
-    UPDATE_MAINTENANCE_STATUS,
-    UPDATE_MOVEMENT_STATE,
-    UPDATE_LIGHT_STATUS,
-    UPDATE_TEMPERATURE,
-    UPDATE_WEIGHT,
-    UPDATE_CURRENT_ELEVATOR,
-    UPDATE_CAPACITY
+    CAPACITY,
+    CURRENT_FLOOR,
+    DOOR_STATE,
+    EMERGENCY_STATE,
+    FLOORS,
+    MAINTENANCE_STATE,
+    MOVEMENT,
+    NEXT_FLOOR,
+    LIGHT_STATE,
+    TEMPERATURE,
+    WEIGHT
 };
 
 
@@ -67,9 +68,12 @@ enum elevator_task_ids
  * These tasks will be scheduled in the Arduino for the
  * elevator manager to perform.
 */
-
+    PASS_ELEVATOR_FLOOR_NAME,
+    ALERT_FLOOR_ARRIVAL,
     ALERT_PERSON_ADDITION,
-    UPDATE_ELEVATOR_ATTRIBUTE,
+    REMOVE_CAR_FROM_FLOOR,
+    ALERT_PERSON_REMOVAL,
+    
 
 /**Elevator Manager tasks
  * 
@@ -80,36 +84,7 @@ enum elevator_task_ids
     // Elevator management tasks
 
     ENTER_ELEVATOR,
-    REQUEST_ELEVATOR,
-
-    // Elevator mutator tasks
-
-    SET_FLOOR,
-    SET_WEIGHT,
-    SET_DOOR_STATUS,
-    SET_TEMPERATURE,
-    SET_LIGHT_STATUS,
-    SET_MAINTANENCE_STATE,
-    SET_ELEVATOR_SYSTEM_MODE,
-
-    PASS_ELEVATOR_TASK_NAME,
-    PASS_ELEVATOR_FLOOR_NAME = 254,
-    PASS_ELEVATOR_COUNT
-};
-
-
- /**Operation modes for the elevator system
-  * 
-  * This tells the Arduino how the system will be operating 
-  * during a session. In the Arduino, it affects how registered
-  * tasks are handled and if the elevators are initialized or
-  * not.
-  */ 
-enum elevator_group_mode
-{
-    INVALID_MODE,   // This won't let the system start completely
-    REGISTER_MODE,  // The system will register the tasks
-    CREATION_MODE   // The system will only send the task names for code creation
+    REQUEST_ELEVATOR
 };
 
 
@@ -222,13 +197,13 @@ typedef struct
 {
     // State tracking attributes
     uint8_t move;             // States current movement
+    uint8_t next_floor;       // Next floor the elevator must go to
     bool action_started;      // Indicate whether or not an action has started
     bool maintenance_needed;  // Elevator needs maintenance
     unsigned long init_time;  // Initial time marker for an elevator operation
 
 
     // Floor management attributes
-    uint8_t next_floor;             // Next floor the elevator must go to
     list_node_t * riders;           // Stack for unasigned riders
     list_node_t * person_pool;      // Memory pool for riders
     list_node_t ** pressed_floors;  // Stacks to store riders
@@ -288,9 +263,6 @@ extern state_t * elevator_states[];
 // Set the elevator to move on a specific direction
 #define set_elevator_movement(car, move) car->attrs.move = move
 
-// Shorthand for running an elevator's state machine
-#define run_elevator(car) run_fsm(&(car)->behavior, (car))
-
 // Shorthand for verifying if elevator is currently performing an action
 #define elevator_performing_action(car) car->attrs.action_started
 
@@ -299,25 +271,6 @@ extern state_t * elevator_states[];
 
 // Verify if the elevator is within its limits
 #define elevator_within_limits(car) (car->state.weight < car->limits.weight) && (car->limits.l_temp < car->state.temp) && (car->state.temp < car->limits.h_temp)
-
-
-// Update elevator object attributes in manager
-
-#define update_elevator_attr(car_index, attr_id, value)       schedule_normal_task(UPDATE_ELEVATOR_ATTRIBUTE, ((uint8_t []){ELEVATOR_TRACKER, car_index, attr_id, ATTR_UINT8_T, value}), 5)
-
-
-#define update_elevator_capacity(car_index, car)           update_elevator_attr(car_index, UPDATE_CAPACITY, (car)->attrs.riders != NULL)
-#define update_elevator_temp(car_index, car)               update_elevator_attr(car_index, UPDATE_TEMPERATURE, (car)->state.temp)
-#define update_elevator_floor(car_index, car)              update_elevator_attr(car_index, UPDATE_FLOOR, (car)->state.floor)
-#define update_elevator_door_status(car_index, car)        update_elevator_attr(car_index, UPDATE_DOOR_STATUS, (car)->state.is_door_open)
-#define update_elevator_light_status(car_index, car)       update_elevator_attr(car_index, UPDATE_LIGHT_STATUS, (car)->state.is_light_on)
-#define update_elevator_maintenance_status(car_index, car) update_elevator_attr(car_index, UPDATE_MAINTENANCE_STATUS, (car)->attrs.maintenance_needed)
-#define update_elevator_movement_state(car_index, car)     update_elevator_attr(car_index, UPDATE_MOVEMENT_STATE, (car)->attrs.move)
-
-#define _get_weight_part(car, index) ((uint8_t *) (&(car)->state.weight))[index]  // Private macro to correctly access the weight attribute of the elevator
-
-#define update_elevator_weight(car_index, car)             schedule_normal_task(UPDATE_ELEVATOR_ATTRIBUTE, ((uint8_t []){ELEVATOR_TRACKER, car_index, UPDATE_WEIGHT, ATTR_UINT16_T, _get_weight_part(car, 0), _get_weight_part(car, 1)}), 6)
-
 
 // Functions meant to be used internally by the Arduino
 
@@ -329,8 +282,21 @@ void enter_elevator(uint8_t car_index, uint8_t * attrs);
 void exit_elevator(elevator_t * car, uint8_t car_index);
 void move_elevator(elevator_t * car, uint8_t car_index);
 void request_elevator(uint8_t car_index, uint8_t * p_floor);
+void update_comp_elevator_attr(uint8_t car_index, elevator_t * car, uint8_t attr_id);
 void set_elevator_attrs(uint8_t car_index, const char ** floor_names, uint8_t floor_count, uint8_t max_temp, uint8_t min_temp, uint8_t capacity, uint16_t weight);
 
+// Update values in computer for the relevant attribute
+
+#define update_elevator_capacity(car_index, car)                  update_comp_elevator_attr(car_index, car, CAPACITY)
+#define update_elevator_temp(car_index, car)                      update_comp_elevator_attr(car_index, car, TEMPERATURE)
+#define update_elevator_floor(car_index, car)                     update_comp_elevator_attr(car_index, car, CURRENT_FLOOR)
+#define update_elevator_door_status(car_index, car)               update_comp_elevator_attr(car_index, car, DOOR_STATE)
+#define update_elevator_light_status(car_index, car)              update_comp_elevator_attr(car_index, car, LIGHT_STATE)
+#define update_elevator_maintenance_status(car_index, car)        update_comp_elevator_attr(car_index, car, MAINTENANCE_STATE)
+#define update_elevator_movement_state(car_index, car)            update_comp_elevator_attr(car_index, car, MOVEMENT)
+#define update_elevator_emergency_status(car_index, car)          update_comp_elevator_attr(car_index, car, EMERGENCY_STATE)
+#define update_elevator_weight(car_index, car)                    update_comp_elevator_attr(car_index, car, WEIGHT)
+#define update_elevator_next_floor(car_index, car)                update_comp_elevator_attr(car_index, car, NEXT_FLOOR)
 
 /* Elevator subsystem methods */
 
@@ -340,11 +306,20 @@ void deinit_elevator_subsystem(void);
 uint8_t get_elevator_system_mode(void);
 elevator_t * get_elevator(uint8_t index);
 void set_elevator_system_mode(uint8_t _, uint8_t * mode);
-void _register_elevator_task(char * name, uint8_t id, uint8_t payload_size, task_t task);
+void alert_comp_elevator(uint8_t attr_id, uint8_t car_index, uint8_t floor);
 bool init_elevator_subsystem(uint8_t count, rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb);
 
-#define register_elevator_task(name, id, payload_size, task)  _register_elevator_task(name, id, payload_size, (task_t) task);
+// Alert computer that a floor has been reached
+#define alert_floor_arrival(car_index, floor)  alert_comp_elevator(ALERT_FLOOR_ARRIVAL, car_index, floor)
 
+// Alert that a person has been added to the elevator
+#define alert_person_addition(car_index, floor)  alert_comp_elevator(ALERT_PERSON_ADDITION, car_index, floor)
+
+// Alert that a person has exited the elevator
+#define alert_person_removal(car_index, floor) alert_comp_elevator(ALERT_PERSON_REMOVAL, car_index, floor)
+
+// Removes an elevator car from the requested elevator listing
+#define remove_elevator_from_floor(car_index, floor)  alert_comp_elevator(REMOVE_CAR_FROM_FLOOR, car_index, floor)
 
 #ifdef __cplusplus
 }

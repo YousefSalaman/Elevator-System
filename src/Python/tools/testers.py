@@ -1,5 +1,5 @@
 
-from . import scheduler
+from . import messengers
 
 
 class Tester:
@@ -22,19 +22,15 @@ class Tester:
 
     _testers = {}
 
-    def __init__(self, task_id, is_priority=False):
+    def __init__(self, task_id, priority_type):
 
         self.task_id = task_id
-        self.is_priority = is_priority
+        self.priority_type = priority_type
 
     def __call__(self, device, pkt):
 
-        thread_id = device.thread_id
-        current_scheduler = scheduler.Scheduler.get_scheduler(thread_id)
-        if self.is_priority:
-            current_scheduler.schedule_priority_task(self.task_id, pkt)
-        else:
-            current_scheduler.schedule_normal_task(self.task_id, pkt)
+        messenger = messengers.SerialMessenger.get_messenger(device.thread_id)
+        messenger.schedule_task(self.task_id, pkt, self.priority_type)
 
     @classmethod
     def add_tester(cls, task_name, task_id, priority_type):

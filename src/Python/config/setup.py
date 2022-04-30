@@ -2,7 +2,8 @@
 
 This module combines the different parts of the system to define
 the setup methods. These are used to define the main function,
-which runs the entire testbed system.
+which runs the entire testbed system. These are intended to be
+ran in the main source file of the system.
 """
 
 import os
@@ -34,29 +35,32 @@ def define_interface_cmds():
     cli.Command("help", commands._show_commands)
     cli.Command("desc", commands._show_description)
     cli.Command("back", commands._navigate_up_node_tree, lambda: cli.Node.get_current_node().parent is not None)
-    cli.Command("go", commands._navigate_down_node_tree, lambda: not hasattr(cli.Node.get_current_node(), "callback"))
+    cli.Command("go", commands._navigate_down_node_tree, lambda: not cli.Node.get_current_node().is_leaf())
 
 
-def define_scheduler_tasks(scheduler):
+def define_default_scheduler_tasks():
     """Define the default scheduler tasks"""
 
-    scheduler.register_task(tasks.REGISTER_PLATFORM, -1, tasks.register_platform)
-    scheduler.register_task(tasks.REGISTER_TRACKER, -1, tasks.register_tracker)
-    scheduler.register_task(tasks.REGISTER_DEVICE, -1, tasks.register_device)
-    scheduler.register_task(tasks.REGISTER_TESTER, -1, tasks.register_tester)
-    scheduler.register_task(tasks.ADD_DEVICE_ATTR, -1, tasks.add_device_attr)
-    scheduler.register_task(tasks.ALERT_MCU_SETUP_COMPLETION, -1, tasks.alert_mcu_setup_completion)
+    for messenger in messengers.SerialMessenger._messengers.values():
+        scheduler = messenger.scheduler
+        scheduler.register_task(tasks.REGISTER_PLATFORM, -1, tasks.register_platform)
+        scheduler.register_task(tasks.REGISTER_TRACKER, -1, tasks.register_tracker)
+        scheduler.register_task(tasks.REGISTER_DEVICE, -1, tasks.register_device)
+        scheduler.register_task(tasks.REGISTER_TESTER, -1, tasks.register_tester)
+        scheduler.register_task(tasks.ADD_DEVICE_ATTR, -1, tasks.add_device_attr)
+        scheduler.register_task(tasks.ALERT_MCU_SETUP_COMPLETION, -1, tasks.alert_mcu_setup_completion)
+        scheduler.register_task(tasks.UPDATE_DEVICE_ATTR_COMP, -1, tasks.update_device_attr_comp)
 
 
 def import_platform(platform_name):
     """Decides what platform to import based on the platform name"""
 
-    os.chdir("platforms")
+    os.chdir(os.path.join("Python", "platforms"))
     _modules = glob(os.path.join(os.getcwd(), "*"))  # Files and directories in tests directory
 
     for module in _modules:
         if platform_name in module:
-            importlib.import_module("platforms." + os.path.basename(module))
+            importlib.import_module("Python.platforms." + os.path.basename(module))
             return
     raise ImportError("A platform with the name '{}' was not found".format(platform_name))
 

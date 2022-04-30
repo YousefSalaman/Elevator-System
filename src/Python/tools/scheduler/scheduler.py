@@ -1,3 +1,4 @@
+from __future__ import print_function
 
 import warnings
 from time import time
@@ -35,7 +36,7 @@ class _TaskTableEntry(object):
 
     __slots__ = ("id", "task", "size")
 
-    def __init__(self, task, size):
+    def __init__(self, task_id, task, size):
 
         if type(size) != int:
             raise TypeError("Size of task must be an integer")
@@ -43,6 +44,7 @@ class _TaskTableEntry(object):
         if not callable(task):
             raise TypeError("The task provided is not callable")
 
+        self.id = task_id
         self.size = size
         self.task = task
 
@@ -142,6 +144,27 @@ class _SchedulingLists:
             target_queue.append(entry)
 
         return True
+
+    def pop_normal_task(self):
+        """Pop a normal task from the queue"""
+
+        self.pop_task(False)
+
+    def pop_priority_task(self):
+        """Pop a priority task from the queue"""
+
+        self.pop_task(True)
+
+    def pop_task(self, is_priority):
+
+        if self.queues_are_empty():
+            # Get relevant queue
+            if is_priority:
+                target_queue = self.priority
+            else:
+                target_queue = self.normal
+
+            self.unscheduled.append(target_queue.popleft())
 
     def _prepare_unscheduled_task(self, task_id, task_type, payload_pkt):
 
@@ -287,7 +310,12 @@ class Scheduler:
         if self.task_table.get(task_id):
             raise KeyError("Task number '{}' has already been registered.".format(task_id))
 
-        self.task_table[task_id] = _TaskTableEntry(callback, task_size)
+        self.task_table[task_id] = _TaskTableEntry(task_id, callback, task_size)
+
+    def schedule_fast_task(self, task_id, pkt):
+        """Schedule a fast task to be performed by an MCU"""
+
+        self._schedule_general_task(task_id, constants.EXTERNAL_TASK, pkt, True, True)
 
     def schedule_normal_task(self, task_id, pkt):
         """Schedule a normal task to be performed by an MCU"""
@@ -329,14 +357,14 @@ class Scheduler:
                 # Handler if the allowed reply time passed
                 if reply_time_passed:
                     if entry.rescheduled:
-                        self._schedule_qs.normal.popleft()
+                        self._schedule_qs.pop_normal_task()
                     else:
                         entry.rescheduled = True
                         self._schedule_qs.normal.reschedule()
 
             else:  # Send priority task
                 self.tx_callback(entry.pkt.buf)
-                self._schedule_qs.priority.popleft()
+                self._schedule_qs.pop_priority_task()
 
     def _perform_task(self):
         """Process the stored scheduler rx packet
@@ -348,13 +376,13 @@ class Scheduler:
         entry = self._rx_pkt.process_incoming_pkt(self.task_table)
 
         if entry is not None:
-            ret_code = self.rx_callback(entry.id, entry.task, self._rx_pkt[constants.PAYLOAD_OFFSET:])
-            alert_system_pkt = bytearray([entry.id, ret_code])
-            self._schedule_general_task(constants.ALERT_SYSTEM, constants.INTERNAL_TASK,
-                                        alert_system_pkt, True, True)
-
-        elif self._rx_pkt.buf[constants.TASK_TYPE_OFFSET] == constants.INTERNAL_TASK:
-            self._process_internal_task()
+            if self._rx_pkt.buf[constants.TASK_TYPE_OFFSET] == constants.INTERNAL_TASK:
+                self._process_internal_task()
+            else:
+                ret_code = self.rx_callback(entry.id, entry.task, self._rx_pkt.buf[constants.PAYLOAD_OFFSET:])
+                alert_system_pkt = bytearray([entry.id, ret_code])
+                self._schedule_general_task(constants.ALERT_SYSTEM, constants.INTERNAL_TASK,
+                                            alert_system_pkt, True, True)
 
         self._rx_pkt.buf = bytearray()  # Reset rx packet buffer
 
@@ -380,7 +408,7 @@ class Scheduler:
                     entry.rescheduled = True
                     self._schedule_qs.normal.reschedule()
                 else:
-                    self._schedule_qs.normal.popleft()
+                    self._schedule_qs.pop_normal_task()
 
     def _schedule_general_task(self, task_id, task_type, pkt, is_priority=False, is_fast=False):
         """Schedule a general task to be performed by another system"""

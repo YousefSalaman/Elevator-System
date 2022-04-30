@@ -2,8 +2,7 @@ from __future__ import print_function
 
 import struct
 
-from . import cli
-from . import scheduler
+from . import cli, scheduler
 
 
 class Device:
@@ -14,12 +13,6 @@ class Device:
         self.name = None  # Name of the device
         self.thread_id = None  # Thread id where device can be found
         self.device_id = None  # Id it has in the mcu
-
-    @staticmethod
-    def register_test(device_name, test):
-        """Register a test for a specific device"""
-
-        cli.Node(test.__name__, test.__doc__, device_name, test)
 
 
 class DeviceTracker:
@@ -108,16 +101,19 @@ class DeviceTracker:
 
         return cls._VALID_ATTR_TYPES.get(attr_type)
 
-    def get_device(self, cu_id=None, device_name=None):
+    def get_device(self, mcu_info=None, device_name=None):
         """Get a device instance by using its registered name or an mcu key"""
 
         # Find the computer unique id if it wasn't given
-        if cu_id is None:
+        cu_id = None
+        if mcu_info is not None:
+            cu_id = self._mcu_info_to_cu_id.get(mcu_info)
+        elif device_name is not None:
             cu_id = self._device_name_to_cu_id.get(device_name)
 
         # Pass device instance if available
         if cu_id is not None:
-            return self.devices[cu_id]
+            return self.devices.get(cu_id)
         return None
 
     @classmethod
@@ -128,11 +124,11 @@ class DeviceTracker:
             tracker_id = cls._tracker_name_to_tracker_id.get(tracker_name)
         return cls._trackers.get(tracker_id)
 
-    @classmethod
-    def was_tracker_created(cls, tracker_name):
-        """Verify if tracker was created and stored in the system"""
+    def register_test(self, test):
+        """Register a test for a specific device"""
 
-        return cls._tracker_name_to_tracker_id.get(tracker_name) is not None
+        if cli.Node.get_node(self.name) is not None:
+            cli.Node(test.__name__, test.__doc__, self.name, test)
 
     @classmethod
     def update_device_attr_comp(cls, tracker_id, attr_id, device_id, thread_id, attr_type, value_pkt):
@@ -153,7 +149,7 @@ class DeviceTracker:
 
             # Interpret value and update attribute
             try:
-                value = struct.unpack(attr_type, value_pkt)
+                value = struct.unpack(attr_type, value_pkt)[0]
                 setattr(device, attr_name, value)
             except struct.error:
                 print("Error in unpacking value for attribute '{}' for device '{}'".format(attr_name, device.name))
@@ -187,3 +183,9 @@ class DeviceTracker:
                 pkt_format = endian_format + "BBB" + attr_type_format
                 pkt = struct.pack(pkt_format, tracker_id, device_id, attr_id, value)
                 return scheduler, pkt
+
+    @classmethod
+    def was_tracker_created(cls, tracker_name):
+        """Verify if tracker was created and stored in the system"""
+
+        return cls._tracker_name_to_tracker_id.get(tracker_name) is not None

@@ -25,12 +25,12 @@ def _show_description():
 
 
 def _show_commands():
-    """Command to show the commands for the layer"""
+    """Command to show the commands and their descriptions for the layer"""
 
     cmds_to_display = cli.Command.get_commands()
     for name, command in cmds_to_display.items():
         print("- {}:\n".format(name))
-        print("\t{}\n".format(command.__doc__))
+        print("\t{}\n".format(command.cmd.__doc__))
 
 
 def _navigate_down_node_tree():

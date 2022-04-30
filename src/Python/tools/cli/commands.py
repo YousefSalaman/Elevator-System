@@ -34,7 +34,7 @@ class Command:
             print("You have the following commands to choose from: ", ', '.join(cmds_to_display))
             cmd_name = user_input("Type one of the commands to proceed: ")
             if cmd_name in cmds_to_display:
-                cls._cmds[cmd_name]()  # Run one of the stored commands
+                cls._cmds[cmd_name].cmd()  # Run one of the stored commands
                 break
             else:
                 print("The command '{}' is not in the current options.\n\n".format(cmd_name))

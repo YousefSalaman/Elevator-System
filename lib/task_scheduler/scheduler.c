@@ -97,6 +97,10 @@ void build_rx_task_pkt(uint8_t byte)
 }
 
 
+// A null/empty task for the scheduling system
+void null_scheduler_task(void * _){}
+
+
 // Schedule a task for an external device to perform
 void schedule_task(uint8_t id, uint8_t type, uint8_t * pkt, uint8_t pkt_size, bool is_priority, bool is_fast)
 {

@@ -23,10 +23,12 @@ void setup()
     if (init_task_scheduler(serial_rx_cb, serial_tx_cb, millis))
     {
         init_device_trackers(1);
-        register_platform("elevator");
+        register_platform("elevator_system");
+
+        // schedule_fast_task(130, EXTERNAL_TASK, (uint8_t *) "Just testing", 12);
 
         init_elevators(2);
-
+        
         // Setup elevator objects
         if (device_initialized(ELEVATOR_TRACKER))  // Check if the elevators where initialized
         {
@@ -38,6 +40,9 @@ void setup()
             set_elevator_attrs(0, floor_names_1, 6, ELEVATOR_MAX_TEMP, ELEVATOR_MIN_TEMP, ELEVATOR_CAPACITY, ELEVATOR_MAX_WEIGHT);
             set_elevator_attrs(1, floor_names_2, 7, ELEVATOR_MAX_TEMP, ELEVATOR_MIN_TEMP, ELEVATOR_CAPACITY, ELEVATOR_MAX_WEIGHT);
 
+            delay(2000);
+            // schedule_fast_task(130, EXTERNAL_TASK, (uint8_t *) "Fully initialized", 17);
+
             alert_setup_completion();
         }
     }
@@ -46,6 +51,7 @@ void setup()
 
 void loop() 
 {
+    // schedule_fast_task(130, EXTERNAL_TASK, (uint8_t *) "Just checking", 13);
     send_task();
     receive_serial_pkt();
     run_elevators();
@@ -85,10 +91,10 @@ static uint8_t serial_rx_cb(uint8_t id, task_t task, uint8_t * pkt)
             }
             return INVALID_CAR_INDEX;
 
-        default: // Set device attribute task
-            ((set_dev_attr_cb) task)(pkt);
-            return 0;
     }
+
+    ((set_dev_attr_cb) task)(pkt);
+    return 0;
 }
 
 

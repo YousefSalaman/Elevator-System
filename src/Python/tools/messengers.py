@@ -15,10 +15,15 @@ import serial
 import threading
 
 from . import scheduler
-from ..config import setup, tasks
+
+# Priority types for scheduling
+
+NORMAL = 0
+PRIORITY = 1
+FAST = 2
 
 
-class BaseMessenger(metaclass=abc.ABCMeta):
+class BaseMessenger:
     """Helper object that listens and writes to the MCUs
 
     It establishes a connection between the main computer and the MCUs
@@ -29,19 +34,32 @@ class BaseMessenger(metaclass=abc.ABCMeta):
     accessing a messenger's scheduler and scheduling a task through it.
     """
 
+    __metaclass__ = abc.ABCMeta
+
     _messengers = {}
     _main_scheduler = None
+    _send_lock = threading.Lock()
+    _schedule_lock = threading.Lock()
     _rx_lock = threading.Lock()
 
     def __init__(self, task_count, is_little_endian=False, no_internal_set_up=False):
 
+        self._is_active = True  # Flag to keep running messenger thread
         self._set_scheduler(task_count, is_little_endian, no_internal_set_up)
-        self.thread = threading.Thread(target=self._receive_pkt)
+        self.thread = threading.Thread(target=self._scheduler_loop)
+
+        self._schedule_task = {  # Mapping for scheduling tasks
+            NORMAL: self.scheduler.schedule_normal_task,
+            PRIORITY: self.scheduler.schedule_priority_task,
+            FAST: self.scheduler.schedule_fast_task
+        }
+
+        self.thread.start()
         self._messengers[self.thread.ident] = self
 
     @abc.abstractmethod
-    def _receive_pkt(self):
-        """Listens for incoming bytes from the schedulers
+    def _scheduler_loop(self):
+        """Listens for incoming bytes and send bytes to the schedulers
 
         Using the "build_incoming_pkt" method provided by the
         scheduler object, you must override this method with
@@ -57,24 +75,64 @@ class BaseMessenger(metaclass=abc.ABCMeta):
         """
 
     @classmethod
-    def normal_schedule_to_all_mcus(cls, task_id, pkt):
-        """Schedule a common normal task for all the MCUs"""
+    def close_messengers(cls):
+        """Close the threads used for the messengers"""
 
-        for messenger in cls._messengers:
-            messenger.scheduler.schedule_normal_task(task_id, pkt)
+        # Deactivate all the messengers before closing threads
+        for messenger in cls._messengers.values():
+            messenger._is_active = False
+
+        # Close all the threads
+        for messenger in cls._messengers.values():
+            messenger.thread.join()
+
+    def schedule_task(self, task_id, pkt, priority_type):
+        """Schedule a task to an mcu
+
+        This should be used instead of the normal scheduler's
+        schedule task methods if you're sending tasks with multiple
+        threads.
+        """
+
+        self._schedule_lock.acquire()
+
+        schedule_task = self._schedule_task.get(priority_type)
+        if schedule_task is not None:
+            schedule_task(task_id, pkt)
+
+        self._schedule_lock.release()
+
+    def send_task(self):
+        """Send a task to an mcu
+
+        This should be used instead of the normal scheduler's
+        send task methods if you're sending tasks with multiple
+        threads.
+        """
+
+        self._send_lock.acquire()
+        self.scheduler.send_task()
+        self._send_lock.release()
 
     @classmethod
-    def priority_schedule_to_all_mcus(cls, task_id, pkt):
-        """Schedule a common priority task for all the MCUs"""
+    def send_task_to_all_mcus(cls):
+        """Send task to all the mcus"""
 
-        for messenger in cls._messengers:
-            messenger.scheduler.priority_priority_task(task_id, pkt)
+        for messenger in cls._messengers.values():
+            messenger.send_task()
+
+    @classmethod
+    def schedule_to_all_mcus(cls, task_id, pkt, priority_type):
+        """Schedule a common task for all the MCUs"""
+
+        for messenger in cls._messengers.values():
+            messenger.schedule_task(task_id, pkt, priority_type)
 
     @classmethod
     def register_task_to_all_mcus(cls, task_id, task_size, callback):
         """Register a common task in all the schedulers"""
 
-        for messenger in cls._messengers:
+        for messenger in cls._messengers.values():
             messenger.scheduler.register_task(task_id, task_size, callback)
 
     @classmethod
@@ -110,17 +168,14 @@ class BaseMessenger(metaclass=abc.ABCMeta):
 
         self._rx_lock.acquire()
 
-        if task_id == tasks.REGISTER_PLATFORM:
-            current_scheduler = self._messengers[self.thread.ident].scheduler
-            task(self.thread.ident, current_scheduler, pkt)
-        elif task_id in {tasks.REGISTER_DEVICE, tasks.ALERT_MCU_SETUP_COMPLETION}:
-            task(self.thread.ident, pkt)
-        else:
-            task(pkt)
+        ret_num = task(self.thread.ident, pkt)
 
         self._rx_lock.release()
 
-        setup.define_scheduler_tasks(scheduler)
+        # Return the "ret_num" for the task (indicates if it was successful in performing task
+        if ret_num is None:
+            return 0
+        return ret_num
 
 
 class SerialMessenger(BaseMessenger, object):
@@ -136,18 +191,21 @@ class SerialMessenger(BaseMessenger, object):
         super(SerialMessenger, self).__init__(task_count, is_little_endian, no_internal_set_up)
 
     @classmethod
-    def close_channels(cls):
-        """Closes all the serial communication channels with the MCUs connected to the computer"""
+    def close_messengers(cls):
+        """Closes all the serial communication channels and threads with the MCUs connected to the computer"""
 
-        for messenger in cls._messengers.items():
+        for messenger in cls._messengers.values():
+            messenger.thread.join()
             messenger.serial_ch.close()
 
-    def _receive_pkt(self):
-        """Listens for incoming bytes from schedulers through a serial channel"""
+    def _scheduler_loop(self):
+        """Listens and writes bytes to the schedulers through a serial channel"""
 
-        while self.serial_ch.in_waiting:
-            byte = bytearray(self.serial_ch.read())
-            self.scheduler.build_incoming_pkt(byte)
+        while self._is_active:
+            self.send_task()
+            if self.serial_ch.in_waiting:
+                byte = self.serial_ch.read()
+                self.scheduler.build_incoming_pkt(byte)
 
     def _tx_scheduler_cb(self, pkt):
         """Writes the outgoing bytes from a scheduler through a serial channel"""
@@ -155,6 +213,9 @@ class SerialMessenger(BaseMessenger, object):
         bytes_to_send = len(pkt)
 
         while bytes_to_send:
-            bytes_to_send -= self.serial_ch.write(pkt)
-            if bytes_to_send < 0:
+            try:
+                bytes_to_send -= self.serial_ch.write(pkt)
+                if bytes_to_send < 0:
+                    break
+            except serial.SerialTimeoutException:
                 break

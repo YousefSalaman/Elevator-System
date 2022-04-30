@@ -78,11 +78,20 @@ void deinit_task_scheduler(void);
 bool init_task_scheduler(rx_schedule_cb rx_cb, tx_schedule_cb tx_cb, timer_schedule_cb timer_cb);
 
 void send_task(void);
+void null_scheduler_task(void *);
 void build_rx_task_pkt(uint8_t byte);
 
 void register_task_private(uint8_t id, int payload_size, task_t task);
 
 #define register_task(id, payload_size, task) register_task_private((id), (payload_size), (task_t) (task))
+
+/**Register an empty task
+ *
+ * This is register method is meant for only telling the system
+ * that a task has a task id but it won't trigger any effect in
+ * your system.
+*/
+#define register_empty_task(id) register_task_private((id), -1, (task_t) null_scheduler_task)
 
 // Task scheduling methods
 

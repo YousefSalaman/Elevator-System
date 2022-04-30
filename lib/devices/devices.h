@@ -12,6 +12,12 @@ extern "C" {
 
 /* Device constants */
 
+// Priority types for testers
+
+#define NORMAL   0
+#define PRIORITY 1
+#define FAST     2
+
 // Registering task numbers
 
 #define REGISTER_PLATFORM       255
@@ -20,8 +26,10 @@ extern "C" {
 #define REGISTER_TESTER_TASK    252
 #define ADD_DEVICE_ATTR         251
 #define ALERT_SETUP_COMPLETION  250
-#define UPDATE_DEVICE_ATTR_COMP 249
-#define UPDATE_DEVICE_ATTR_MCU  248
+#define COMP_SETUP_COMPLETE     249
+#define UPDATE_DEVICE_ATTR_COMP 248
+#define UPDATE_DEVICE_ATTR_MCU  247
+
 
 // Attribute type constants
 
@@ -96,11 +104,13 @@ typedef struct
 void init_device_trackers(uint8_t count);
 void register_platform(const char * platform_name);
 void register_device_tracker(const char * name, uint8_t tracker_id, uint8_t device_count, deinit_dev_cb deinit_cb, set_dev_attr_cb set_attr_cb);
-void add_device_attributes(uint8_t tracker_id, const char * attrs[], uint8_t array_size);
+void add_device_attrs(uint8_t tracker_id, const char * attrs[], uint8_t array_size);
 void create_device_instances(uint8_t tracker_id);
+bool is_comp_setup_complete(void);
+bool is_comp_device_setup_complete(uint8_t tracker_id);
 void _register_device_task(const char * name, uint8_t id, uint8_t payload_size, task_t task, uint8_t priority_type);
 
-#define alert_setup_completion() schedule_normal_task(ALERT_SETUP_COMPLETION, NULL, 0)  // Alert setup completion to the computer
+#define alert_setup_completion() schedule_fast_task(ALERT_SETUP_COMPLETION, EXTERNAL_TASK, NULL, 0)  // Alert setup completion to the computer
 #define register_device_task(name, id, payload_size, task, priority_type) _register_device_task(name, id, payload_size, (task_t) task, priority_type)
 
 // Miscellaneous device methods
